@@ -99,3 +99,32 @@ These are software tests; they provide no additional hardware playback evidence.
 
 The next hardware checkpoint remains one deck at a low test level. No user
 presence is needed for the software work completed here.
+
+## First active playback checkpoint — 2026-10-13
+
+User returned to the mixer, confirmed USB A and requested playback implementation.
+Added `play_sixty_four_probe`, a standalone explicitly selected five-second
+experiment; it is not a driver and is never run by CTest. It validates the exact
+Sixty-Four descriptor fingerprint, requires configuration 0, opens without
+seizing, selects only interface 1 alternate 1 and validates OUT 0x06. It queues
+64 one-millisecond transfers using a **candidate nominal-six-frames/microframe
+policy**. This policy has not been established as a long-term clock solution.
+
+The `--silence-5s` hardware run completed:
+
+```text
+Batches=5000/5000, packet errors=0, scheduling faults=0
+Playback alternate restored: yes
+Configuration restored: yes
+```
+
+This establishes successful bounded OUT scheduling/cleanup on USB A. Silence
+cannot establish wire sample encoding, audible routing, or sustained duplex
+clock behavior. The installed recording driver was not changed or restarted.
+
+The pending `--tone-deck1-5s` mode sends 440 Hz at -42 dBFS only on USB lanes 3/4,
+with one second of silence at each end and 50 ms fades. Offline tests verify
+all 240,000 generated frames: finite and amplitude bounded, all other lanes
+zero, both selected lanes equal, silent endpoints, and expected signal energy.
+All 12 tests pass after adding the diagnostic. Awaiting user readiness for
+local monitoring before running the tone.

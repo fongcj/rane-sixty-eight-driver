@@ -152,3 +152,10 @@ if(APPLE)
     add_test(NAME test_sixty_four_output_profile COMMAND test_sixty_four_output_profile)
 endif()
 set_tests_properties(test_sixty_four_playback PROPERTIES TIMEOUT 30)
+
+if(APPLE)
+    # Active only with explicit command-line mode; never registered with CTest.
+    add_executable(play_sixty_four_probe tools/debug/play_sixty_four_probe.cpp)
+    target_link_libraries(play_sixty_four_probe PRIVATE sixty_four_playback_candidate ${IOKIT_FRAMEWORK} ${COREFOUNDATION_FRAMEWORK})
+    target_compile_options(play_sixty_four_probe PRIVATE -Wall -Wextra -Werror)
+endif()

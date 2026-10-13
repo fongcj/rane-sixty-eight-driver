@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "../src/playback/SixtyFourPlayback.h"
+#include "../src/playback/ProbeSignal.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -16,6 +17,17 @@ static float decode(const uint8_t* p) {
 }
 static void frame(float* p,unsigned n) {for(unsigned c=0;c<channels;++c)p[c]=float(n*16+c);}
 int main() {
+    double energy=0;
+    for(unsigned i=0;i<240000;++i) {
+        auto signal=probeFrame(i,true),silence=probeFrame(i,false);
+        for(unsigned c=0;c<10;++c) {
+            CHECK(silence[c]==0 && std::isfinite(signal[c]) && std::fabs(signal[c])<=.007944);
+            if(c!=2 && c!=3)CHECK(signal[c]==0);
+            if(i<=48000 || i>=192000)CHECK(signal[c]==0);
+        }
+        CHECK(signal[2]==signal[3]);energy+=double(signal[2])*signal[2];
+    }
+    CHECK(energy>4.0 && energy<4.6);
     std::array<uint8_t,280> bytes;bytes.fill(0xa5);size_t written=99;
     float golden[10]={0,1,-1,.5f,-0.0f,.25f,-.25f,2,-2,.125f};
     const uint32_t bits[10]={0,0x3f800000,0xbf800000,0x3f000000,0x80000000,0x3e800000,0xbe800000,0x40000000,0xc0000000,0x3e000000};
