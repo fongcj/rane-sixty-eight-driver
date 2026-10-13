@@ -14,11 +14,11 @@ int main() {
     for (unsigned i=0;i<s.slots;++i) {
         check(s.reserve(i,100,first[i])); check(first[i].frame==110+i);
     }
-    check(s.pending()==16 && !s.begin(100));
+    check(s.pending()==s.slots && !s.begin(100));
     check(!s.reserve(0,100,next));
     // Completions may arrive out of order, but new USB frame ranges may not overlap.
     check(s.completed(first[4]));
-    check(s.reserve(4,115,next) && next.frame==126);
+    check(s.reserve(4,115,next) && next.frame==110+s.slots);
     check(!s.completed(first[4])); // A duplicate cannot release the new transfer.
     auto invalid=next; ++invalid.frame; check(!s.completed(invalid));
     s.stop();
@@ -33,7 +33,7 @@ int main() {
     check(!s.reserve(0,310,next) && !s.running() && s.faults()==1);
     check(!s.begin(std::numeric_limits<uint64_t>::max()-9));
     check(s.begin(400));
-    check(!s.reserve(16,400,next) && s.pending()==0);
+    check(!s.reserve(s.slots,400,next) && s.pending()==0);
     s.stop();
     // Exercise sustained completion/resubmission without gaps in bus frame numbers.
     check(s.begin(1000));

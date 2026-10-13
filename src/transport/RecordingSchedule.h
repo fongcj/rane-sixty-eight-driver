@@ -9,7 +9,7 @@
 // A discontinuity latches a fault rather than silently skipping time.
 class RecordingSchedule {
 public:
-    static constexpr unsigned slots = 16;
+    static constexpr unsigned slots = 64;
     struct Ticket { unsigned slot; uint64_t generation; uint64_t frame; };
     bool begin(uint64_t now) {
         if (running_ || pending() || generation_ == std::numeric_limits<uint64_t>::max() ||

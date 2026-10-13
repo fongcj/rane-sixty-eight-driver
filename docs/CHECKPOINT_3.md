@@ -97,3 +97,39 @@ sample count and both restoration results. Independently inspect WAV format,
 channel levels and continuity before claiming success. This implementation
 has NOT yet run on the mixer. HAL activation, indefinite streaming, precise
 clock anchoring and physical unplug testing remain outstanding.
+
+## First hardware run and retry — 2026-10-12
+
+User explicitly requested continuous recording with Deck 1 post-fader and
+fader up. First run stopped at 12,762/30,000 batches: no packet errors, one
+late-scheduling fault. No WAV was published. Both USB settings restored, but
+interface close returned kIOReturnNoDevice because configuration 0 had already
+removed the interface. Corrected cleanup to close/release the drained interface
+before clearing the device configuration. Increased queued reads from 16 to
+64 (64 milliseconds) for scheduling margin; did not conceal the failed run
+or disable fault detection. Updated scheduler tests; eight tests passed.
+
+The second run completed all 30,000 consecutively scheduled batches with
+zero packet errors and zero scheduling faults. 239,352 microframes returned
+short packets, normal for 5/6-sample payloads requested with 7-sample capacity.
+Both alternate and configuration restoration verified, no cleanup errors.
+
+WAV validation: 12 channels, IEEE Float32, 48 kHz, 1,439,940 sample frames
+(29.998750 nominal seconds for 30 seconds of bus scheduling). The 60-frame
+difference is about 42 ppm, consistent with a small rate difference but not
+sufficient alone to calibrate the device clock. Callback wall duration was
+30.009400 seconds including initial scheduling lead.
+All decoded samples are finite and below full scale. Deck 1 USB 3/4 and
+master USB 11/12 RMS are approximately -23 dBFS, with peaks near -6.7/-6.9
+dBFS. Other channels are quiet; FlexFX 9/10 is digital silence.
+
+This validates one continuous 30-second capture with the current setup,
+not long-duration reliability, exact clock recovery or sample-perfect
+fidelity against a reference waveform. No driver installed or loaded.
+
+Local WAV retained in `recordings/sixty-four-continuous-02.wav` (Git ignored).
+69,117,176 bytes; SHA256:
+`998b2051f327d5a42475720027582f6f8ed434c15795b06f09a2fec9d7354d90`.
+Local logs/analysis are in docs/hardware/sixty-four-usb-a/continuous-01*.txt,
+continuous-02*.txt and continuous-02-analysis.json (Git ignored).
+Remaining: cancellation/unplug validation, clock anchors and HAL integration.

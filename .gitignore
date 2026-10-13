@@ -23,3 +23,6 @@ dist/
 docs/hardware/**/*.txt
 docs/hardware/**/*.bin
 docs/hardware/**/*.json
+
+# Local audio recordings are never part of source/PR uploads.
+recordings/

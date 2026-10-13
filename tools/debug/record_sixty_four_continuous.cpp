@@ -121,19 +121,28 @@ public:
             reset=ok((*audio)->GetAlternateSetting(audio,&alt),"verify alternate") && alt==0 && reset;
             std::printf("Recording alternate restored: %s\n",reset?"yes":"NO"); restored=reset && restored;
         }
+        // If callbacks fail to drain, keep owner, DMA buffers and interfaces alive
+        // until this standalone process exits. Never free memory still owned by USB.
+        drained=!schedule.pending();
+        if(!drained) {
+            // Still attempt device configuration restoration without freeing pending buffers.
+            if(changed) {
+                UInt8 config=255;
+                bool reset=ok((*device)->SetConfiguration(device,0),"restore configuration 0");
+                reset=ok((*device)->GetConfiguration(device,&config),"verify configuration") && config==0 && reset;
+                std::printf("Configuration restored: %s\n",reset?"yes":"NO");
+            }
+            std::fprintf(stderr,"Callback drain NOT verified; retained until process exit\n"); return false;
+        }
+        if(source) { CFRunLoopRemoveSource(CFRunLoopGetCurrent(),source,kCFRunLoopDefaultMode); CFRelease(source); source=nullptr; }
+        if(audioOpen) restored=ok((*audio)->USBInterfaceClose(audio),"close interface") && restored;
+        if(audio) { (*audio)->Release(audio); audio=nullptr; }
         if(changed) {
             UInt8 config=255;
             bool reset=ok((*device)->SetConfiguration(device,0),"restore configuration 0");
             reset=ok((*device)->GetConfiguration(device,&config),"verify configuration") && config==0 && reset;
             std::printf("Configuration restored: %s\n",reset?"yes":"NO"); restored=reset && restored;
         }
-        // If callbacks fail to drain, keep owner, DMA buffers and interfaces alive
-        // until this standalone process exits. Never free memory still owned by USB.
-        drained=!schedule.pending();
-        if(!drained) { std::fprintf(stderr,"Callback drain NOT verified; retained until process exit\n"); return false; }
-        if(source) { CFRunLoopRemoveSource(CFRunLoopGetCurrent(),source,kCFRunLoopDefaultMode); CFRelease(source); source=nullptr; }
-        if(audioOpen) restored=ok((*audio)->USBInterfaceClose(audio),"close interface") && restored;
-        if(audio) { (*audio)->Release(audio); audio=nullptr; }
         if(deviceOpen) restored=ok((*device)->USBDeviceClose(device),"close device") && restored;
         if(device) { (*device)->Release(device); device=nullptr; }
         return restored;
