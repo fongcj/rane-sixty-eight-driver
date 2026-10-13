@@ -26,13 +26,11 @@ If choppiness recurs, note the wall time and whether you had just started playba
 changed buffer size or opened another audio app. Save a short report spanning
 before/after the event. No need to force a long reliability test.
 
-The currently installed pre-diagnostics bundle has no `r64d` property. The tool
-reports that explicitly rather than displaying invented zero counters. It was
-checked against that older installed bundle successfully. New bundle installation
-and live counter validation are separate, approval-required steps. Existing
-install scripts refuse overwrites: their documented rollback preserves the old
-bundle, after which install can deploy the new signed bundle. Neither step has
-been executed as part of diagnostics development.
+Before the update, the tool correctly reported that the installed older bundle
+had no `r64d` property rather than displaying invented zero counters. Version
+0.2.0 was subsequently installed with explicit user approval (see below).
+Live counter validation during playback is still pending. Existing install
+scripts refuse overwrites; preserve the old bundle before deploying an update.
 
 ## Reading the fields
 
@@ -78,3 +76,20 @@ failure messages are unchanged. No background monitor or service is installed.
 high-water/reset, read-only property size/bounds, buffer-change reporting, and
 existing buffer/codec/HAL behavior. Playback tests pass ASan/UBSan and TSan.
 The new telemetry has not been used to diagnose an actual choppy episode yet.
+
+
+## Installed verification — 2026-10-13
+
+User explicitly approved updating the duplex driver and restarting macOS audio.
+The signed arm64 0.2.0 bundle was staged and verified, and the previous bundle
+was preserved at:
+
+`/Library/Audio/Plug-Ins/HAL-disabled/sixty-four-before-diagnostics.YgXmVI/RaneSixtyFourDuplex.driver`
+
+Installation and `coreaudiod` restart succeeded without a laptop reboot or
+security changes. A read-only native query returned valid schema-1 JSON with
+session=0, state=0, buffer_frames=512, sample_rate=48000 and zero counters. No
+stream had started since restart; zeros do not establish glitch-free playback.
+CoreAudio also reported 12 inputs, 10 outputs and alive=1. The query did not
+start playback/recording or change settings. Counter validation during ordinary
+Ableton playback remains the next check; no continuous monitor was left running.
