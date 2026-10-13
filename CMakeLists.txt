@@ -105,3 +105,7 @@ endif()
 add_executable(test_sixty_four_audio tests/test_sixty_four_audio.cpp)
 target_link_libraries(test_sixty_four_audio PRIVATE rane_proto)
 add_test(NAME test_sixty_four_audio COMMAND test_sixty_four_audio)
+
+# Pure scheduling logic: no USB API linkage or device access.
+add_executable(test_recording_schedule tests/test_recording_schedule.cpp)
+add_test(NAME test_recording_schedule COMMAND test_recording_schedule)
