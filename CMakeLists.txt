@@ -119,3 +119,23 @@ if(APPLE)
     target_link_libraries(record_sixty_four_continuous PRIVATE rane_proto ${IOKIT_FRAMEWORK} ${COREFOUNDATION_FRAMEWORK})
     target_compile_options(record_sixty_four_continuous PRIVATE -Wall -Wextra -Werror)
 endif()
+
+if(APPLE)
+    add_library(sixty_four_capture STATIC src/transport/SixtyFourCapture.cpp)
+    target_link_libraries(sixty_four_capture PUBLIC rane_proto ${IOKIT_FRAMEWORK} ${COREFOUNDATION_FRAMEWORK})
+    add_library(RaneSixtyFourInput MODULE src/hal64/SixtyFourInput.cpp)
+    set_target_properties(RaneSixtyFourInput PROPERTIES BUNDLE TRUE BUNDLE_EXTENSION "driver"
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/src/hal64/Info.plist")
+    target_link_libraries(RaneSixtyFourInput PRIVATE sixty_four_capture ${COREAUDIO_FRAMEWORK})
+endif()
+
+add_executable(test_capture_timeline tests/test_capture_timeline.cpp)
+add_test(NAME test_capture_timeline COMMAND test_capture_timeline)
+if(APPLE)
+    target_compile_options(sixty_four_capture PRIVATE -Wall -Wextra -Werror)
+    target_compile_options(RaneSixtyFourInput PRIVATE -Wall -Wextra -Werror)
+    # Source-level HAL contract test with fake capture: no USB opens or driver loading.
+    add_executable(test_sixty_four_hal tests/test_sixty_four_hal.cpp)
+    target_link_libraries(test_sixty_four_hal PRIVATE rane_proto ${COREAUDIO_FRAMEWORK} ${IOKIT_FRAMEWORK} ${COREFOUNDATION_FRAMEWORK})
+    add_test(NAME test_sixty_four_hal COMMAND test_sixty_four_hal)
+endif()

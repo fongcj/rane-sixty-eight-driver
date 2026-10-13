@@ -1,3 +1,8 @@
+> **Sixty-Four development checkpoint:** The new recording-only CoreAudio bundle
+> exposes 12 inputs at 48 kHz. It has passed offline tests but still needs approved
+> installation and Ableton validation. See [CoreAudio checkpoint and rollback](docs/COREAUDIO_CHECKPOINT.md).
+> The Sixty-Eight installer and feature claims below do not apply to the Sixty-Four.
+
 <p align="center">
   <img src="docs/screenshots/app_icon.png" width="128" height="128" alt="Rane Sixty-Eight App Icon">
 </p>
