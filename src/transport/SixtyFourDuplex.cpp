@@ -16,9 +16,11 @@
 static void number(CFMutableDictionaryRef d,CFStringRef key,int value) {
     auto n=CFNumberCreate(nullptr,kCFNumberIntType,&value); CFDictionarySetValue(d,key,n); CFRelease(n);
 }
+using D=sixtyfour::DuplexDiagnostics;
 namespace {
 class Session {
 public:
+    explicit Session(D& telemetry):diag(telemetry) {}
     bool drained=true;
     std::function<bool(uint64_t,const std::array<unsigned,8>&,uint8_t*,std::array<IOUSBIsocFrame,8>&)> produce;
     std::function<void(const float*,size_t,uint64_t)> receive;
@@ -160,7 +162,7 @@ public:
         while(!stop.load() && !failed) {
             CFRunLoopRunInMode(kCFRunLoopDefaultMode,.005,true);
             if(delivered!=previous) {previous=delivered;lastProgress=CFAbsoluteTimeGetCurrent();}
-            if(CFAbsoluteTimeGetCurrent()-lastProgress>1) failed=true;
+            if(CFAbsoluteTimeGetCurrent()-lastProgress>1) {diag.add(D::workerStalls);diag.failure(6);failed=true;}
         }
         schedule.stop(); return !failed;
     }
@@ -182,22 +184,26 @@ private:
         if(bus>UINT64_MAX-SixtyFourDuplex::outputLeadBusFrames) return false;
         uint64_t target=bus+SixtyFourDuplex::outputLeadBusFrames;
         UInt64 now;AbsoluteTime at;
-        if(!ok((*playback)->GetBusFrameNumber(playback,&now,&at),"output bus clock") || target<=now) return false;
+        if(!ok((*playback)->GetBusFrameNumber(playback,&now,&at),"output bus clock") || target<=now) {diag.add(D::outputScheduleFaults);diag.failure(4);return false;}
         auto& s=outSlots[bus%outSlots.size()];
-        if(s.busy || sample>UINT64_MAX-SixtyFourDuplex::outputLeadSamples) return false;
+        if(s.busy || sample>UINT64_MAX-SixtyFourDuplex::outputLeadSamples) {diag.add(D::outputSlotBusy);diag.failure(4);return false;}
         s.owner=this;s.frames={};s.data={};
-        if(!produce(sample+SixtyFourDuplex::outputLeadSamples,counts,s.data.data(),s.frames)) return false;
+        if(!produce(sample+SixtyFourDuplex::outputLeadSamples,counts,s.data.data(),s.frames)) {diag.add(D::outputScheduleFaults);diag.failure(4);return false;}
         s.busy=true;++outputPending;
         auto result=(*playback)->WriteIsochPipeAsync(playback,1,s.data.data(),target,8,s.frames.data(),outputCompletion,&s);
-        if(!ok(result,"submit output")) {s.busy=false;--outputPending;return false;}
+        if(!ok(result,"submit output")) {diag.add(D::outputTransferErrors);diag.failure(5,uint32_t(result));s.busy=false;--outputPending;return false;}
         return true;
     }
     static void outputCompletion(void* context,IOReturn result,void*) {
         auto& s=*static_cast<OutputSlot*>(context);auto& r=*s.owner;
-        if(!s.busy) {r.failed=true;return;}s.busy=false;--r.outputPending;
+        if(!s.busy) {r.diag.add(D::outputTransferErrors);r.diag.failure(5);r.failed=true;return;}s.busy=false;--r.outputPending;
         if(!r.schedule.running() || r.failed) return;
-        if(result) {r.failed=true;return;}
-        for(auto& f:s.frames) if(f.frStatus) {r.failed=true;return;}
+        r.gap(D::maxOutputCallbackGapNs,r.previousOutputTicks);
+        if(result) {r.diag.add(D::outputTransferErrors);r.diag.failure(5,uint32_t(result));r.failed=true;return;}
+        for(auto& f:s.frames) if(f.frStatus) {r.diag.add(D::outputTransferErrors);r.diag.failure(5,uint32_t(f.frStatus));r.failed=true;return;}
+        r.diag.add(D::outputBatches);
+        uint64_t frames=0;for(auto& f:s.frames)frames+=f.frReqCount/40;
+        r.diag.add(D::outputFrames,frames);
     }
     static bool ok(IOReturn code,const char* step) {
         if(code) std::fprintf(stderr,"SixtyFourDuplex %s failed: 0x%x\n",step,code);
@@ -205,19 +211,20 @@ private:
     }
     bool submit(unsigned index) {
         UInt64 now; AbsoluteTime at;
-        if(!ok((*audio)->GetBusFrameNumber(audio,&now,&at),"clock")) return false;
+        if(!ok((*audio)->GetBusFrameNumber(audio,&now,&at),"clock")) {diag.add(D::inputScheduleFaults);diag.failure(2);return false;}
         auto& s=slots[index];
-        if(!schedule.reserve(index,now,s.ticket)) return false;
+        if(!schedule.reserve(index,now,s.ticket)) {diag.add(D::inputScheduleFaults);diag.failure(2);return false;}
         if(!expected) expected=s.ticket.frame;
         s.ready=false; s.frames={}; for(auto& f:s.frames) f.frReqCount=336;
         auto r=(*audio)->ReadIsochPipeAsync(audio,1,s.data.data(),s.ticket.frame,8,s.frames.data(),completion,&s);
-        if(r) {schedule.failed(s.ticket); return false;} return true;
+        if(r) {diag.add(D::inputTransferErrors);diag.failure(3,uint32_t(r));schedule.failed(s.ticket); return false;} return true;
     }
     static void completion(void* context,IOReturn result,void*) {
         auto& s=*static_cast<Slot*>(context);auto& r=*s.owner;
-        if(!r.schedule.completed(s.ticket)) {r.failed=true;return;}
+        if(!r.schedule.completed(s.ticket)) {r.diag.add(D::inputScheduleFaults);r.diag.failure(2);r.failed=true;return;}
         if(!r.schedule.running() || r.failed) return;
-        if(result && result!=kIOReturnUnderrun) {r.failed=true;return;}
+        r.gap(D::maxInputCallbackGapNs,r.previousInputTicks);
+        if(result && result!=kIOReturnUnderrun) {r.diag.add(D::inputTransferErrors);r.diag.failure(3,uint32_t(result));r.failed=true;return;}
         s.ready=true;
         // Retain completed slots until all earlier bus frames can be delivered.
         for(;;) {
@@ -229,17 +236,25 @@ private:
             for(unsigned i=0;i<8;++i) {
                 auto& f=next->frames[i];size_t n=0;
                 if((f.frStatus && f.frStatus!=kIOReturnUnderrun) || !f.frActCount ||
-                   !sixty_four_decode_input(next->data.data()+i*336,f.frActCount,samples.data()+count*12,samples.size()-count*12,&n)) {r.failed=true;return;}
+                   !sixty_four_decode_input(next->data.data()+i*336,f.frActCount,samples.data()+count*12,samples.size()-count*12,&n)) {r.diag.add(D::decodeErrors);r.diag.failure(3,uint32_t(f.frStatus));r.failed=true;return;}
                 counts[i]=unsigned(n);count+=n;
             }
             uint64_t endHost=r.baseHost+uint64_t((next->ticket.frame+1-r.baseBus)*r.ticksPerMs);
             if(!r.submitOutput(next->ticket.frame,r.inputSamples,counts)) {r.failed=true;return;}
+            r.diag.add(D::inputBatches);r.diag.add(D::inputFrames,count);
             r.inputSamples+=count;
             r.receive(samples.data(),count,endHost);
             ++r.expected;++r.delivered;
             if(!r.submit(next->ticket.slot)) {r.failed=true;return;}
         }
     }
+    void gap(D::Metric metric,uint64_t& previous) {
+        uint64_t now=mach_absolute_time();
+        if(previous && now>=previous)diag.maximum(metric,uint64_t((now-previous)*1e6/ticksPerMs));
+        previous=now;
+    }
+    D& diag;
+    uint64_t previousInputTicks=0,previousOutputTicks=0;
     IOUSBDeviceInterface182** device=nullptr;
     IOUSBInterfaceInterface942** audio=nullptr;
     IOUSBInterfaceInterface942** playback=nullptr;
@@ -257,9 +272,11 @@ private:
 }
 bool SixtyFourDuplex::start() {
     if(thread.joinable() || poisoned.load()) return false;
+    diagnostics.reset();sessionNumber.fetch_add(1);previousWriteTicks=0;
+    mach_timebase_info_data_t tb;mach_timebase_info(&tb);nanosPerTick=double(tb.numer)/tb.denom;
     stopping.store(false);state.store(0);clockSeq.store(0);missing.store(0);
     try { thread=std::thread(&SixtyFourDuplex::worker,this); }
-    catch(...) {state.store(-1);return false;}
+    catch(...) {diagnostics.add(D::startFailures);diagnostics.failure(1);state.store(-1);return false;}
     auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
     while(state.load()==0 && std::chrono::steady_clock::now()<deadline) std::this_thread::sleep_for(std::chrono::milliseconds(5));
     if(state.load()!=1) {stop();return false;} return true;
@@ -270,8 +287,8 @@ void SixtyFourDuplex::stop() {
 void SixtyFourDuplex::worker() {
     // On an undrained cancellation, retain the Session/DMA storage for process lifetime.
     timeline.clear();output.reset();
-    auto* session=new(std::nothrow) Session;
-    if(!session) {state.store(-1);return;}
+    auto* session=new(std::nothrow) Session(diagnostics);
+    if(!session) {diagnostics.add(D::startFailures);diagnostics.failure(1);state.store(-1);return;}
     uint64_t total=0,nextAnchor=0;
     mach_timebase_info_data_t tb;mach_timebase_info(&tb);
     double ticksPerSample=1e9*tb.denom/(tb.numer*48000.0);
@@ -298,11 +315,11 @@ void SixtyFourDuplex::worker() {
         }
         if(total>=2048 && state.load()==0) state.store(1);
     };
-    } catch(...) {delete session;state.store(-1);return;}
+    } catch(...) {delete session;diagnostics.add(D::startFailures);diagnostics.failure(1);state.store(-1);return;}
     bool good=session->open() && session->run(stopping);
-    if(!good) state.store(-1);
+    if(!good) {if(diagnostics.snapshot()[D::lastFailureStage]==0) {diagnostics.add(D::startFailures);diagnostics.failure(1);}state.store(-1);}
     bool restored=session->close();
-    if(!restored) poisoned.store(true);
+    if(!restored) {diagnostics.add(D::cleanupFailures);diagnostics.failure(7);poisoned.store(true);}
     if(session->drained) delete session;
     state.store(good && restored ? 2 : -1);
 }
@@ -316,6 +333,15 @@ bool SixtyFourDuplex::timestamp(double* sample,uint64_t* host) const {
 }
 
 bool SixtyFourDuplex::write(double sample,unsigned frames,const float* data) {
-    if(!healthy() || !std::isfinite(sample) || sample<0 || sample>=std::ldexp(1.0,64) || std::floor(sample)!=sample) return false;
-    return output.push(uint64_t(sample),data,frames);
+    diagnostics.add(D::writeCalls);
+    uint64_t now=mach_absolute_time();
+    if(previousWriteTicks && now>=previousWriteTicks)diagnostics.maximum(D::maxWriteGapNs,uint64_t((now-previousWriteTicks)*nanosPerTick));
+    previousWriteTicks=now;
+    if(!healthy()) {diagnostics.add(D::writeFailures);return false;}
+    if(!std::isfinite(sample) || sample<0 || sample>=std::ldexp(1.0,64) || std::floor(sample)!=sample) {
+        diagnostics.add(D::invalidWriteTimes);diagnostics.add(D::writeFailures);return false;
+    }
+    bool good=output.push(uint64_t(sample),data,frames);
+    if(!good)diagnostics.add(D::writeFailures);
+    return good;
 }

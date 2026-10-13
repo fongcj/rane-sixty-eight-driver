@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #pragma once
 #include "CaptureTimeline.h"
+#include "../diagnostics/DuplexDiagnostics.h"
 #include "../playback/SixtyFourPlayback.h"
 #include <atomic>
 #include <thread>
@@ -14,6 +15,9 @@ public:
     static constexpr uint64_t clockPeriod=16384;
     static constexpr uint64_t outputLeadBusFrames=64;
     static constexpr uint64_t outputLeadSamples=3072;
+    sixtyfour::DuplexDiagnostics diagnostics;
+    std::atomic<uint64_t> sessionNumber{0};
+    int diagnosticState() const {return state.load();}
     bool start();
     bool write(double sample,unsigned frames,const float* data);
     sixtyfour::playback::Queue::Stats outputStats() const {return output.stats();}
@@ -34,4 +38,6 @@ private:
     std::atomic<bool> stopping{false}, poisoned{false};
     std::atomic<uint64_t> clockSeq{0},clockSample{0},clockHost{0};
     std::thread thread;
+    uint64_t previousWriteTicks=0; // Single HAL WriteMix producer.
+    double nanosPerTick=1;
 };

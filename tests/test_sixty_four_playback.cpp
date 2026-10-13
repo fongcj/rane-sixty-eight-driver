@@ -57,6 +57,7 @@ int main() {
     CHECK(q->read(2,out,4));
     for(unsigned i=0;i<40;++i)CHECK(out[i]==(i>=20&&i<30?f[i-20]:0));
     CHECK(q->stats().missing==5 && q->stats().late==1);
+    CHECK(q->stats().startupMissing==4 && q->stats().highWater==2);
     CHECK(!q->read(2,out,1));CHECK(!q->push(3,f,1));
     CHECK(!q->push(UINT64_MAX,f,1));CHECK(!q->read(UINT64_MAX,out,1));
     CHECK(!q->push(5,nullptr,1));CHECK(!q->read(6,nullptr,1));
@@ -64,7 +65,7 @@ int main() {
     std::vector<float> full(Queue::capacity*channels);
     for(unsigned i=0;i<Queue::capacity;++i)frame(full.data()+i*channels,i);
     CHECK(q->push(0,full.data(),Queue::capacity));
-    CHECK(!q->push(Queue::capacity,f,1));CHECK(q->stats().rejectedFrames==1);
+    CHECK(!q->push(Queue::capacity,f,1));CHECK(q->stats().rejectedFrames==1 && q->stats().highWater==Queue::capacity);
     std::vector<float> received(full.size());
     CHECK(q->read(0,received.data(),Queue::capacity));CHECK(received==full);
     CHECK(q->push(Queue::capacity,f,1));CHECK(q->read(Queue::capacity,out,1));
@@ -91,7 +92,7 @@ int main() {
 
     // Deterministic producer/consumer stress over many wraps. Publication gates
     // the reader so an underrun cannot hide torn data or an ownership violation.
-    q->reset();constexpr unsigned total=100000;std::atomic<unsigned> published{0};
+    q->reset();CHECK(q->stats().startupMissing==0 && q->stats().highWater==0);constexpr unsigned total=100000;std::atomic<unsigned> published{0};
     std::thread producer([&]{float v[10];for(unsigned i=0;i<total;++i){
         frame(v,i);while(!q->push(i,v,1))std::this_thread::yield();published.store(i+1,std::memory_order_release);
     }});

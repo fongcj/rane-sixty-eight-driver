@@ -26,7 +26,7 @@ public:
     // queued frames are discarded by the consumer and counted separately.
     bool read(uint64_t first,float* samples,size_t frames);
     void reset();
-    struct Stats { uint64_t missing,late,rejectedFrames,invalidBlocks; };
+    struct Stats { uint64_t missing,late,rejectedFrames,invalidBlocks,startupMissing,highWater; };
     Stats stats() const;
 private:
     static_assert(std::atomic<uint64_t>::is_always_lock_free);
@@ -35,7 +35,8 @@ private:
     alignas(64) std::atomic<uint64_t> head_{0};
     alignas(64) std::atomic<uint64_t> tail_{0};
     uint64_t nextWrite_=0,nextRead_=0;
-    std::atomic<uint64_t> missing_{0},late_{0},rejected_{0},invalid_{0};
+    bool deliveredAny_=false; // Consumer-owned; zero-valued audio counts as delivered.
+    std::atomic<uint64_t> missing_{0},late_{0},rejected_{0},invalid_{0},startupMissing_{0},highWater_{0};
 };
 
 struct Batch {

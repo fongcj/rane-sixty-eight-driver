@@ -14,6 +14,29 @@ void SixtyFourDuplex::stop() {++stops;state.store(2);}
 bool SixtyFourDuplex::timestamp(double* s,uint64_t* h) const {*s=4096;*h=123456;return true;}
 bool SixtyFourDuplex::write(double sample,unsigned frames,const float*) {writtenAt=sample;writtenFrames=frames;return true;}
 int main() {
+    sixtyfour::DuplexDiagnostics d;
+    d.add(sixtyfour::DuplexDiagnostics::inputBatches,4);
+    d.maximum(sixtyfour::DuplexDiagnostics::maxWriteGapNs,100);
+    d.maximum(sixtyfour::DuplexDiagnostics::maxWriteGapNs,50);
+    d.failure(5,0xe00002d8);
+    CHECK(d.snapshot()[sixtyfour::DuplexDiagnostics::inputBatches]==4);
+    CHECK(d.snapshot()[sixtyfour::DuplexDiagnostics::maxWriteGapNs]==100);
+    CHECK(d.snapshot()[sixtyfour::DuplexDiagnostics::lastFailureStage]==5);
+    d.reset();for(auto v:d.snapshot())CHECK(v==0);
+    AudioObjectPropertyAddress diagnosticAddress{sixtyfour::diagnosticsSelector,kAudioObjectPropertyScopeGlobal,0};
+    CFStringRef report=nullptr;UInt32 reportSize=0;Boolean writable=true;
+    CHECK(settable(nullptr,device,0,&diagnosticAddress,&writable)==noErr && !writable);
+    CHECK(get(nullptr,device,0,&diagnosticAddress,0,nullptr,1,&reportSize,&report)==kAudioHardwareBadPropertySizeError);
+    CHECK(get(nullptr,device,0,&diagnosticAddress,0,nullptr,sizeof(report),&reportSize,&report)==noErr);
+    CHECK(CFStringFind(report,CFSTR("\"schema\":1"),0).location!=kCFNotFound);
+    CHECK(CFStringFind(report,CFSTR("\"output_startup_missing_frames\":0"),0).location!=kCFNotFound);
+    CHECK(CFStringFind(report,CFSTR("\"buffer_frames\":512"),0).location!=kCFNotFound);
+    CFRelease(report);
+    CHECK(configure(nullptr,device,256,nullptr)==noErr);
+    CHECK(get(nullptr,device,0,&diagnosticAddress,0,nullptr,sizeof(report),&reportSize,&report)==noErr);
+    CHECK(CFStringFind(report,CFSTR("\"buffer_frames\":256"),0).location!=kCFNotFound);
+    CHECK(CFStringFind(report,CFSTR("\"buffer_changes_lifetime\":1"),0).location!=kCFNotFound);
+    CFRelease(report);
     AudioObjectPropertyAddress a{kAudioPlugInPropertyDeviceList,kAudioObjectPropertyScopeGlobal,0};
     UInt32 size=0,value=0;
     CHECK(get(nullptr,plugin,0,&a,0,nullptr,4,&size,&value)==noErr && value==device && size==4);

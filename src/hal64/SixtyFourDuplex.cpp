@@ -17,7 +17,7 @@ constexpr AudioObjectID plugin=1,device=2,stream=3,outStream=4;
 constexpr UInt32 period=SixtyFourDuplex::clockPeriod;
 AudioServerPlugInHostRef host=nullptr;
 std::atomic<UInt32> refs{1},bufferSize{512};
-std::atomic<uint64_t> seed{1};
+std::atomic<uint64_t> seed{1},bufferChanges{0},invalidIOBlocks{0},maxOutputBlockFrames{0};
 std::mutex lifecycle;
 std::set<UInt32> clients;
 SixtyFourDuplex capture;
@@ -82,6 +82,38 @@ OSStatus property(AudioObjectID object,const AudioObjectPropertyAddress* a,UInt3
          return scalar(AudioObjectID(CFEqual(uid,CFSTR("org.openrane.sixtyfour.duplex"))?device:kAudioObjectUnknown));}
     }
     if(object==device) switch(a->mSelector) {
+    case kAudioObjectPropertyCustomPropertyInfoList: {
+        AudioServerPlugInCustomPropertyInfo info{sixtyfour::diagnosticsSelector,
+            kAudioServerPlugInCustomPropertyDataTypeCFString,kAudioServerPlugInCustomPropertyDataTypeNone};
+        return scalar(info);
+    }
+    case sixtyfour::diagnosticsSelector: {
+        if(a->mScope!=kAudioObjectPropertyScopeGlobal || a->mElement!=0) return kAudioHardwareUnknownPropertyError;
+        *size=sizeof(CFStringRef);if(!data)return noErr;
+        if(capacity<*size)return kAudioHardwareBadPropertySizeError;
+        auto text=CFStringCreateMutable(nullptr,0);
+        if(!text)return kAudioHardwareUnspecifiedError;
+        auto field=[&](const char* key,uint64_t n) {
+            CFStringAppendFormat(text,nullptr,CFSTR(",\"%s\":%llu"),key,(unsigned long long)n);
+        };
+        CFStringAppend(text,CFSTR("{\"schema\":1"));
+        field("session",capture.sessionNumber.load());
+        CFStringAppendFormat(text,nullptr,CFSTR(",\"state\":%d"),capture.diagnosticState());
+        field("invalid_io_blocks_lifetime",invalidIOBlocks.load());field("max_output_block_frames_lifetime",maxOutputBlockFrames.load());
+        field("buffer_frames",bufferSize.load());field("buffer_changes_lifetime",bufferChanges.load());
+        field("sample_rate",48000);field("input_safety_frames",2048);field("output_safety_frames",4096);
+        field("input_missing_frames",capture.missing.load());
+        auto q=capture.outputStats();
+        field("output_missing_frames",q.missing);field("output_startup_missing_frames",q.startupMissing);
+        field("output_post_start_missing_frames",q.missing>=q.startupMissing?q.missing-q.startupMissing:0);
+        field("output_late_frames",q.late);field("output_rejected_frames",q.rejectedFrames);
+        field("output_invalid_blocks",q.invalidBlocks);field("queue_high_water_frames",q.highWater);
+        auto counters=capture.diagnostics.snapshot();
+        for(unsigned i=0;i<counters.size();++i)field(sixtyfour::DuplexDiagnostics::names[i],counters[i]);
+        field("session_after",capture.sessionNumber.load());
+        CFStringAppend(text,CFSTR("}"));
+        CFStringRef result=text;std::memcpy(data,&result,sizeof(result));return noErr;
+    }
     case kAudioObjectPropertyModelName:return string(CFSTR("Rane Sixty-Four"));
     case kAudioDevicePropertyDeviceUID:return string(CFSTR("org.openrane.sixtyfour.duplex"));
     case kAudioDevicePropertyModelUID:return string(CFSTR("RaneSixtyFour_Duplex_Model"));
@@ -134,7 +166,7 @@ OSStatus stop(AudioServerPlugInDriverRef,AudioObjectID,UInt32);
 OSStatus clientRemove(AudioServerPlugInDriverRef d,AudioObjectID id,const AudioServerPlugInClientInfo* c) {return c?stop(d,id,c->mClientID):kAudioHardwareIllegalOperationError;}
 OSStatus configure(AudioServerPlugInDriverRef,AudioObjectID id,UInt64 action,void*) {
     if(id!=device || action<64 || action>1024) return kAudioHardwareIllegalOperationError;
-    bufferSize.store(UInt32(action));return noErr;
+    if(bufferSize.exchange(UInt32(action))!=UInt32(action))bufferChanges.fetch_add(1);return noErr;
 }
 OSStatus abortConfigure(AudioServerPlugInDriverRef,AudioObjectID,UInt64,void*) {return noErr;}
 Boolean has(AudioServerPlugInDriverRef,AudioObjectID id,pid_t,const AudioObjectPropertyAddress* a) {
@@ -206,7 +238,8 @@ OSStatus io(AudioServerPlugInDriverRef,AudioObjectID id,AudioObjectID sid,UInt32
     if(id!=device || (sid!=stream && sid!=outStream)) return kAudioHardwareBadObjectError;
     bool output=sid==outStream;
     if(op!=(output?kAudioServerPlugInIOOperationWriteMix:kAudioServerPlugInIOOperationReadInput)) return kAudioHardwareUnsupportedOperationError;
-    if(!cycle || !data || frames>1024) return kAudioHardwareIllegalOperationError;
+    if(output && frames>maxOutputBlockFrames.load(std::memory_order_relaxed))maxOutputBlockFrames.store(frames,std::memory_order_relaxed);
+    if(!cycle || !data || frames>1024) {invalidIOBlocks.fetch_add(1,std::memory_order_relaxed);return kAudioHardwareIllegalOperationError;}
     if(!active.load() || !capture.healthy()) {
         if(!output) std::memset(data,0,frames*48);
         return kAudioHardwareNotRunningError;
