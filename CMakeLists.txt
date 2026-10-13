@@ -17,6 +17,7 @@ endif()
 add_library(rane_proto STATIC
     src/protocol/rane_codec.c
     src/protocol/rane_packet.c
+    src/protocol/sixty_four_audio.c
 )
 target_include_directories(rane_proto PUBLIC src/protocol)
 
@@ -72,3 +73,35 @@ add_test(NAME test_packet COMMAND test_packet)
 add_executable(test_ring tests/test_ring.cpp)
 target_include_directories(test_ring PRIVATE src/engine)
 add_test(NAME test_ring COMMAND test_ring)
+
+# Pure metadata test: no engine, USB access or driver loading.
+add_executable(test_device_lookup tests/test_device_lookup.cpp)
+add_test(NAME test_device_lookup COMMAND test_device_lookup)
+
+# Standalone cached-descriptor reader; never links the hardware engine.
+if(APPLE)
+    add_executable(read_sixty_four_descriptors tools/debug/read_sixty_four_descriptors.c)
+    target_link_libraries(read_sixty_four_descriptors PRIVATE ${IOKIT_FRAMEWORK} ${COREFOUNDATION_FRAMEWORK})
+endif()
+
+# Active diagnostic; requires explicit flag and never runs under CTest.
+if(APPLE)
+    add_executable(capture_sixty_four_controls tools/debug/capture_sixty_four_controls.c)
+    target_link_libraries(capture_sixty_four_controls PRIVATE ${IOKIT_FRAMEWORK} ${COREFOUNDATION_FRAMEWORK})
+endif()
+
+if(APPLE)
+    add_executable(test_capture_callback tests/test_capture_callback.c)
+    target_link_libraries(test_capture_callback PRIVATE ${IOKIT_FRAMEWORK} ${COREFOUNDATION_FRAMEWORK})
+    add_test(NAME test_capture_callback COMMAND test_capture_callback)
+endif()
+
+# Active recording-only diagnostic, never run by CTest.
+if(APPLE)
+    add_executable(record_sixty_four_packets tools/debug/record_sixty_four_packets.c)
+    target_link_libraries(record_sixty_four_packets PRIVATE ${IOKIT_FRAMEWORK} ${COREFOUNDATION_FRAMEWORK})
+endif()
+
+add_executable(test_sixty_four_audio tests/test_sixty_four_audio.cpp)
+target_link_libraries(test_sixty_four_audio PRIVATE rane_proto)
+add_test(NAME test_sixty_four_audio COMMAND test_sixty_four_audio)
