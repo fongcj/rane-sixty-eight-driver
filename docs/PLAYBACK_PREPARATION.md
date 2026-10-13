@@ -128,3 +128,9 @@ all 240,000 generated frames: finite and amplitude bounded, all other lanes
 zero, both selected lanes equal, silent endpoints, and expected signal energy.
 All 12 tests pass after adding the diagnostic. Awaiting user readiness for
 local monitoring before running the tone.
+
+
+The subsequent tone run also completed 5,000/5,000 batches with no packet or
+scheduling errors and verified restoration. The user confirmed a clean tone
+in Deck 1's headphone cue. Shared-transport/CoreAudio implementation and the
+next hardware checkpoint are described in `DUPLEX_CHECKPOINT.md`.

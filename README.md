@@ -1,7 +1,7 @@
 > **Sixty-Four development checkpoint:** The new recording-only CoreAudio bundle
 > exposes 12 inputs at 48 kHz. It has passed offline tests and is installed locally;
 > CoreAudio sees all 12 inputs, and the user has confirmed recording audio in Ableton. See [CoreAudio checkpoint and rollback](docs/COREAUDIO_CHECKPOINT.md).
-> Offline playback preparation is documented in [Playback preparation](docs/PLAYBACK_PREPARATION.md); outputs remain disabled.
+> A clean Deck 1 playback tone is now hardware-confirmed. The [duplex driver checkpoint](docs/DUPLEX_CHECKPOINT.md) is built but not installed; simultaneous playback/recording testing is next.
 > The Sixty-Eight installer and feature claims below do not apply to the Sixty-Four.
 
 <p align="center">

@@ -159,3 +159,27 @@ if(APPLE)
     target_link_libraries(play_sixty_four_probe PRIVATE sixty_four_playback_candidate ${IOKIT_FRAMEWORK} ${COREFOUNDATION_FRAMEWORK})
     target_compile_options(play_sixty_four_probe PRIVATE -Wall -Wextra -Werror)
 endif()
+
+if(APPLE)
+    # Experimental duplex transport; recording-only installed target stays separate.
+    add_library(sixty_four_duplex STATIC src/transport/SixtyFourDuplex.cpp)
+    target_link_libraries(sixty_four_duplex PUBLIC sixty_four_playback_candidate rane_proto ${IOKIT_FRAMEWORK} ${COREFOUNDATION_FRAMEWORK})
+    target_compile_options(sixty_four_duplex PRIVATE -Wall -Wextra -Werror)
+endif()
+
+if(APPLE)
+    add_library(RaneSixtyFourDuplex MODULE src/hal64/SixtyFourDuplex.cpp)
+    set_target_properties(RaneSixtyFourDuplex PROPERTIES BUNDLE TRUE BUNDLE_EXTENSION "driver"
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/src/hal64/DuplexInfo.plist")
+    target_link_libraries(RaneSixtyFourDuplex PRIVATE sixty_four_duplex ${COREAUDIO_FRAMEWORK})
+    target_compile_options(RaneSixtyFourDuplex PRIVATE -Wall -Wextra -Werror)
+endif()
+
+if(APPLE)
+    add_executable(probe_sixty_four_duplex tools/debug/probe_sixty_four_duplex.cpp)
+    target_link_libraries(probe_sixty_four_duplex PRIVATE sixty_four_duplex)
+    target_compile_options(probe_sixty_four_duplex PRIVATE -Wall -Wextra -Werror)
+    add_executable(test_sixty_four_duplex_hal tests/test_sixty_four_duplex_hal.cpp)
+    target_link_libraries(test_sixty_four_duplex_hal PRIVATE sixty_four_playback_candidate rane_proto ${COREAUDIO_FRAMEWORK} ${IOKIT_FRAMEWORK} ${COREFOUNDATION_FRAMEWORK})
+    add_test(NAME test_sixty_four_duplex_hal COMMAND test_sixty_four_duplex_hal)
+endif()
