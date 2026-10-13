@@ -17,6 +17,8 @@
 #include <cstring>
 
 #include "../engine/StreamEngine.h"
+#include "../protocol/sixty_four_audio.h"
+#include "../protocol/rane_defs.h"
 #include "../transport/IOUSBLibTransport.h"
 
 #define RLOG(fmt, ...) os_log(OS_LOG_DEFAULT, "[RaneHALPlugin] " fmt, ##__VA_ARGS__)
@@ -37,6 +39,9 @@ struct RaneSharedMeters {
     float    outPeaks[10];    // Outputs 1..10 (5 stereo pairs)
 };
 #pragma pack(pop)
+
+static bool IsSixtyFour();
+static CFStringRef DeviceUID();
 
 static RaneSharedMeters* gSharedMeters = nullptr;
 static int gSharedMetersFd = -1;
@@ -205,10 +210,43 @@ static OSStatus WriteCFString(CFStringRef s, UInt32 inDataSize, UInt32* outDataS
     return noErr;
 }
 
+// Only an exact observed identity selects the Sixty-Four metadata.
+// This does not enable its USB transport or infer a physical A/B port.
+static bool IsSixtyFour() {
+    auto& usb = IOUSBLibTransport::shared();
+    return usb.currentVID() == RANE_VENDOR_ID_1 && usb.currentPID() == RANE_PID_SIXTY_FOUR_OBSERVED;
+}
+static CFStringRef DeviceUID() {
+    return IsSixtyFour() ? CFSTR("org.openrane.sixtyfour") : CFSTR("org.openrane.sixtyeight");
+}
+static CFStringRef StreamName(bool input) {
+    if (IsSixtyFour()) return input ? CFSTR("Rane Sixty-Four Input (12 Ch)") : CFSTR("Rane Sixty-Four Output (10 Ch)");
+    return input ? CFSTR("Rane Sixty-Eight Input (12 Ch)") : CFSTR("Rane Sixty-Eight Output (10 Ch)");
+}
+static CFStringRef FourChannelString(bool input, UInt32 element, bool category) {
+    // Initialize immutable CF strings once; property getters return borrowed refs.
+    static CFStringRef names[2][12] = {};
+    static CFStringRef groups[2][12] = {};
+    static const bool initialized = [] {
+        for (unsigned direction = 0; direction < 2; ++direction) {
+            bool in = direction == 0;
+            for (unsigned e = 1; e <= (in ? 12u : 10u); ++e) {
+                names[direction][e-1] = CFStringCreateWithCString(nullptr, sixty_four_channel_name(in, e), kCFStringEncodingUTF8);
+                groups[direction][e-1] = CFStringCreateWithCString(nullptr, sixty_four_channel_category(in, e), kCFStringEncodingUTF8);
+            }
+        }
+        return true;
+    }();
+    (void)initialized;
+    if (!element || element > (input ? 12u : 10u)) return input ? CFSTR("Input") : CFSTR("Output");
+    return category ? groups[input ? 0 : 1][element-1] : names[input ? 0 : 1][element-1];
+}
+
 static CFStringRef GetChannelName(bool isInput, UInt32 element) {
     if (element == kAudioObjectPropertyElementMain) {
-        return isInput ? CFSTR("Rane Sixty-Eight Input (12 Ch)") : CFSTR("Rane Sixty-Eight Output (10 Ch)");
+        return StreamName(isInput);
     }
+    if (IsSixtyFour()) return FourChannelString(isInput, element, false);
     if (isInput) {
         switch (element) {
             case 1:  return CFSTR("PGM 1 In L");
@@ -246,6 +284,7 @@ static CFStringRef GetCategoryName(bool isInput, UInt32 element) {
     if (element == kAudioObjectPropertyElementMain) {
         return isInput ? CFSTR("Input Stream") : CFSTR("Output Stream");
     }
+    if (IsSixtyFour()) return FourChannelString(isInput, element, true);
     if (isInput) {
         switch (element) {
             case 1: case 2:   return CFSTR("PGM 1");
@@ -548,7 +587,7 @@ static OSStatus RaneHAL_GetPropertyData(AudioServerPlugInDriverRef, AudioObjectI
             return noErr;
         case kAudioPlugInPropertyTranslateUIDToDevice: {
             CFStringRef requestedUID = (inQualifierData ? *(CFStringRef*)inQualifierData : nullptr);
-            if (requestedUID && CFEqual(requestedUID, CFSTR("org.openrane.sixtyeight"))) {
+            if (requestedUID && CFEqual(requestedUID, DeviceUID())) {
                 *(AudioObjectID*)outData = kObjectID_Device;
             } else {
                 *(AudioObjectID*)outData = kAudioObjectUnknown;
@@ -569,7 +608,7 @@ static OSStatus RaneHAL_GetPropertyData(AudioServerPlugInDriverRef, AudioObjectI
         case kAudioObjectPropertyName:
         case kAudioObjectPropertyElementName: {
             if (inAddress->mElement == kAudioObjectPropertyElementMain) {
-                return WriteCFString(CFSTR("Rane Sixty-Eight"), inDataSize, outDataSize, outData);
+                return WriteCFString(IsSixtyFour() ? CFSTR("Rane Sixty-Four") : CFSTR("Rane Sixty-Eight"), inDataSize, outDataSize, outData);
             }
             bool isInput = (inAddress->mScope == kAudioObjectPropertyScopeInput);
             return WriteCFString(GetChannelName(isInput, inAddress->mElement), inDataSize, outDataSize, outData);
@@ -592,11 +631,11 @@ static OSStatus RaneHAL_GetPropertyData(AudioServerPlugInDriverRef, AudioObjectI
             CFRelease(numStr);
             return err;
         }
-        case kAudioObjectPropertyModelName:       return WriteCFString(CFSTR("Rane Sixty-Eight"), inDataSize, outDataSize, outData);
-        case kAudioObjectPropertyFirmwareVersion: return WriteCFString(CFSTR("v1.40"), inDataSize, outDataSize, outData);
+        case kAudioObjectPropertyModelName:       return WriteCFString(IsSixtyFour() ? CFSTR("Rane Sixty-Four") : CFSTR("Rane Sixty-Eight"), inDataSize, outDataSize, outData);
+        case kAudioObjectPropertyFirmwareVersion: return WriteCFString(IsSixtyFour() ? CFSTR("Unknown") : CFSTR("v1.40"), inDataSize, outDataSize, outData);
         case kAudioObjectPropertyManufacturer:    return WriteCFString(CFSTR("Rane Corporation"), inDataSize, outDataSize, outData);
-        case kAudioDevicePropertyDeviceUID:       return WriteCFString(CFSTR("org.openrane.sixtyeight"), inDataSize, outDataSize, outData);
-        case kAudioDevicePropertyModelUID:        return WriteCFString(CFSTR("RaneSixtyEight_Model"), inDataSize, outDataSize, outData);
+        case kAudioDevicePropertyDeviceUID:       return WriteCFString(DeviceUID(), inDataSize, outDataSize, outData);
+        case kAudioDevicePropertyModelUID:        return WriteCFString(IsSixtyFour() ? CFSTR("RaneSixtyFour_Model") : CFSTR("RaneSixtyEight_Model"), inDataSize, outDataSize, outData);
         case kAudioDevicePropertyTransportType:   *(UInt32*)outData = kAudioDeviceTransportTypeUSB;   *outDataSize = sizeof(UInt32); return noErr;
         case kAudioDevicePropertyClockDomain:     *(UInt32*)outData = 0;                                *outDataSize = sizeof(UInt32); return noErr;
         case kAudioDevicePropertyDeviceIsAlive:   *(UInt32*)outData = gDeviceAlive.load() ? 1 : 0;       *outDataSize = sizeof(UInt32); return noErr;
@@ -671,7 +710,7 @@ static OSStatus RaneHAL_GetPropertyData(AudioServerPlugInDriverRef, AudioObjectI
         case kAudioObjectPropertyName:
         case kAudioObjectPropertyElementName: {
             if (inAddress->mElement == kAudioObjectPropertyElementMain) {
-                return WriteCFString(isInput ? CFSTR("Rane Sixty-Eight Input (12 Ch)") : CFSTR("Rane Sixty-Eight Output (10 Ch)"),
+                return WriteCFString(StreamName(isInput),
                                      inDataSize, outDataSize, outData);
             }
             return WriteCFString(GetChannelName(isInput, inAddress->mElement), inDataSize, outDataSize, outData);

@@ -3,6 +3,7 @@
 
 #include "IOUSBLibTransport.h"
 #include "../protocol/rane_packet.h"
+#include "../protocol/sixty_four_audio.h"
 
 #include <CoreAudio/AudioHardware.h>
 #include <mach/mach_time.h>
@@ -124,7 +125,7 @@ bool IOUSBLibTransport::findDevice(uint16_t *outVid, uint16_t *outPid) {
                 (*dev)->GetDeviceProduct(dev, &product);
 
                 const RaneDeviceInfo* info = rane_lookup_device(vendor, product);
-                if (info) {
+                if (info && info->currentTransportEnabled) {
                     mCurrentVID = vendor;
                     mCurrentPID = product;
                     if (outVid) *outVid = vendor;
@@ -935,6 +936,22 @@ void IOUSBLibTransport::onInComplete(uint32_t slot, IOReturn result, uint32_t by
         const IOUSBIsocFrame& fr = mInIsochFrames[slot][i];
         if (fr.frStatus != kIOReturnSuccess && fr.frStatus != kIOReturnUnderrun) continue;
         uint32_t act = fr.frActCount;
+        if (mCurrentVID == RANE_VENDOR_ID_1 && mCurrentPID == RANE_PID_SIXTY_FOUR_OBSERVED) {
+            // Reserved for the separate recording-only startup path. Device lookup
+            // remains gated until that lifecycle is implemented and validated.
+            size_t decodedFrames = 0;
+            if (act > stride || !sixty_four_decode_input(
+                    mInBuf[slot] + (size_t)i * stride, act,
+                    floatFrames + nFrames * kInChannels,
+                    sizeof(floatFrames) / sizeof(float) - nFrames * kInChannels,
+                    &decodedFrames)) {
+                if (mXferErrLogCount.fetch_add(1) < 50)
+                    RLOG("Rejecting malformed Sixty-Four input packet (%u bytes)", act);
+                continue;
+            }
+            nFrames += static_cast<uint32_t>(decodedFrames);
+            continue;
+        }
         if (act > stride) act = stride;
         uint32_t cnt = act / kWireInFrameBytes;
         if (cnt == 0) continue;

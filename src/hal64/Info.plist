@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleExecutable</key>
+    <string>RaneSixtyFourInput</string>
+    <key>CFBundleIdentifier</key>
+    <string>org.openrane.sixtyfour.input.hal</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>RaneSixtyFourInput</string>
+    <key>CFBundlePackageType</key>
+    <string>BNDL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFPlugInDynamicRegistration</key>
+    <false/>
+    <key>CFPlugInFactories</key>
+    <dict>
+        <key>85D38D86-644F-48B9-BE83-D4AC131B3EB1</key>
+        <string>SixtyFourInputFactory</string>
+    </dict>
+    <key>CFPlugInTypes</key>
+    <dict>
+        <!-- kAudioServerPlugInTypeUUID -->
+        <key>443ABAB8-E7B3-491A-B985-BEB9187030DB</key>
+        <array>
+            <string>85D38D86-644F-48B9-BE83-D4AC131B3EB1</string>
+        </array>
+    </dict>
+    <key>AudioServerPlugIn_LoadingConditions</key>
+    <dict>
+        <key>IOService Matching</key>
+        <array>
+            <dict>
+                <key>IOProviderClass</key><string>IOUSBHostDevice</string>
+                <key>idVendor</key><integer>7365</integer>
+                <key>idProduct</key><integer>23</integer>
+            </dict>
+        </array>
+    </dict>
+    <key>AudioServerPlugIn_DriverIsSandboxSafe</key>
+    <true/>
+</dict>
+</plist>

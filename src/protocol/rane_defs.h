@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* rane_defs.h - Rane USB protocol definitions and device IDs.
- * Supports Rane Sixty-Eight, Sixty-Four, Sixty-Two, SL4.
+ * Candidate device metadata; only Sixty-Eight entries use the current transport.
+ * Other model IDs require hardware verification before enabling a transport.
  */
 #ifndef RANE_DEFS_H
 #define RANE_DEFS_H
@@ -23,7 +24,8 @@ extern "C" {
 #define RANE_PID_SIXTY_EIGHT_A    0x0008  /* Rane Sixty-Eight USB 1 */
 #define RANE_PID_SIXTY_EIGHT_B    0x0080  /* Rane Sixty-Eight USB 2 */
 #define RANE_PID_SIXTY_EIGHT_ALT  0x000E  /* Rane Sixty-Eight Alt FW */
-#define RANE_PID_SIXTY_FOUR       0x0014  /* Rane Sixty-Four */
+#define RANE_PID_SIXTY_FOUR       0x0014  /* Upstream candidate; unverified */
+#define RANE_PID_SIXTY_FOUR_OBSERVED 0x0017  /* Observed on A and B, 2026-10-12; transport disabled */
 #define RANE_PID_SIXTY_TWO        0x0012  /* Rane Sixty-Two */
 #define RANE_PID_SL4              0x0006  /* Rane SL4 */
 
@@ -69,23 +71,24 @@ typedef struct {
     uint32_t defaultSampleRate;
     uint32_t channelsIn;
     uint32_t channelsOut;
+    bool currentTransportEnabled; /* Metadata recognition is not protocol support. */
 } RaneDeviceInfo;
 
 static inline const RaneDeviceInfo* rane_lookup_device(uint16_t vid, uint16_t pid) {
     static const RaneDeviceInfo kDevices[] = {
-        { RANE_VENDOR_ID_1, RANE_PID_SIXTY_EIGHT_HW,  "Rane Sixty-Eight",         "RaneSixtyEight_Model",  48000, 12, 10 },
-        { RANE_VENDOR_ID_1, RANE_PID_SIXTY_EIGHT_A,   "Rane Sixty-Eight (USB 1)", "RaneSixtyEight_Model1", 48000, 12, 10 },
-        { RANE_VENDOR_ID_1, RANE_PID_SIXTY_EIGHT_B,   "Rane Sixty-Eight (USB 2)", "RaneSixtyEight_Model2", 48000, 12, 10 },
-        { RANE_VENDOR_ID_2, RANE_PID_SIXTY_EIGHT_HW,  "Rane Sixty-Eight",         "RaneSixtyEight_Model",  48000, 12, 10 },
-        { RANE_VENDOR_ID_2, RANE_PID_SIXTY_EIGHT_A,   "Rane Sixty-Eight (USB 1)", "RaneSixtyEight_Model1", 48000, 12, 10 },
-        { RANE_VENDOR_ID_3, RANE_PID_SIXTY_EIGHT_HW,  "Rane Sixty-Eight",         "RaneSixtyEight_Model",  48000, 12, 10 },
-        { RANE_VENDOR_ID_1, RANE_PID_SIXTY_FOUR,      "Rane Sixty-Four",          "RaneSixtyFour_Model",   48000, 12, 12 },
-        { RANE_VENDOR_ID_1, RANE_PID_SIXTY_TWO,       "Rane Sixty-Two",           "RaneSixtyTwo_Model",    48000, 6,  6  },
-        { RANE_VENDOR_ID_1, RANE_PID_SL4,             "Rane SL4",                 "RaneSL4_Model",         48000, 10, 10 },
+        { RANE_VENDOR_ID_1, RANE_PID_SIXTY_EIGHT_HW,  "Rane Sixty-Eight",         "RaneSixtyEight_Model",  48000, 12, 10, true },
+        { RANE_VENDOR_ID_1, RANE_PID_SIXTY_EIGHT_A,   "Rane Sixty-Eight (USB 1)", "RaneSixtyEight_Model1", 48000, 12, 10, true },
+        { RANE_VENDOR_ID_1, RANE_PID_SIXTY_EIGHT_B,   "Rane Sixty-Eight (USB 2)", "RaneSixtyEight_Model2", 48000, 12, 10, true },
+        { RANE_VENDOR_ID_2, RANE_PID_SIXTY_EIGHT_HW,  "Rane Sixty-Eight",         "RaneSixtyEight_Model",  48000, 12, 10, true },
+        { RANE_VENDOR_ID_2, RANE_PID_SIXTY_EIGHT_A,   "Rane Sixty-Eight (USB 1)", "RaneSixtyEight_Model1", 48000, 12, 10, true },
+        { RANE_VENDOR_ID_3, RANE_PID_SIXTY_EIGHT_HW,  "Rane Sixty-Eight",         "RaneSixtyEight_Model",  48000, 12, 10, true },
+        { RANE_VENDOR_ID_1, RANE_PID_SIXTY_FOUR,      "Rane Sixty-Four",          "RaneSixtyFour_Model",   48000, 12, 10, false },
+        { RANE_VENDOR_ID_1, RANE_PID_SIXTY_FOUR_OBSERVED, "Rane Sixty-Four",         "RaneSixtyFour_Model", 48000, 12, 10, false },
+        { RANE_VENDOR_ID_1, RANE_PID_SIXTY_TWO,       "Rane Sixty-Two",           "RaneSixtyTwo_Model",    48000, 6,  6, false },
+        { RANE_VENDOR_ID_1, RANE_PID_SL4,             "Rane SL4",                 "RaneSL4_Model",         48000, 10, 10, false },
     };
     for (size_t i = 0; i < sizeof(kDevices)/sizeof(kDevices[0]); i++) {
-        if ((kDevices[i].vid == vid || vid == 0 || kDevices[i].vid == 0x1CC5 || vid == 0x1CC5) &&
-            (kDevices[i].pid == pid || pid == 4 || pid == 8)) {
+        if (kDevices[i].vid == vid && kDevices[i].pid == pid) {
             return &kDevices[i];
         }
     }

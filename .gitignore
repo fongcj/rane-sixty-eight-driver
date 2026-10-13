@@ -18,3 +18,11 @@ dist/
 *.out
 *.err
 /tmp/
+
+# Local hardware captures: publish reviewed Markdown findings, not raw logs/audio.
+docs/hardware/**/*.txt
+docs/hardware/**/*.bin
+docs/hardware/**/*.json
+
+# Local audio recordings are never part of source/PR uploads.
+recordings/
