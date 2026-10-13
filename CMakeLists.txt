@@ -109,3 +109,13 @@ add_test(NAME test_sixty_four_audio COMMAND test_sixty_four_audio)
 # Pure scheduling logic: no USB API linkage or device access.
 add_executable(test_recording_schedule tests/test_recording_schedule.cpp)
 add_test(NAME test_recording_schedule COMMAND test_recording_schedule)
+
+add_executable(test_recording_buffer tests/test_recording_buffer.cpp)
+target_link_libraries(test_recording_buffer PRIVATE rane_proto)
+add_test(NAME test_recording_buffer COMMAND test_recording_buffer)
+if(APPLE)
+    # Standalone opt-in recorder: not linked to the HAL or existing USB engine.
+    add_executable(record_sixty_four_continuous tools/debug/record_sixty_four_continuous.cpp)
+    target_link_libraries(record_sixty_four_continuous PRIVATE rane_proto ${IOKIT_FRAMEWORK} ${COREFOUNDATION_FRAMEWORK})
+    target_compile_options(record_sixty_four_continuous PRIVATE -Wall -Wextra -Werror)
+endif()
