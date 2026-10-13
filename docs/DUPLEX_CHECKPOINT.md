@@ -1,7 +1,9 @@
 # Sixty-Four duplex checkpoint — 2026-10-13
 
-Status: implementation built, offline-tested and short duplex hardware test passed; not installed. The working
-recording-only driver remains installed and unchanged.
+Status: duplex driver installed with explicit user approval; CoreAudio enumerates
+12 inputs and 10 outputs at 48 kHz. The working recording-only driver remains
+installed and unchanged as a fallback. Actual Ableton duplex playback remains
+the next application-level acceptance test.
 
 ## Hardware evidence
 
@@ -112,3 +114,25 @@ input-count output policy for this short test; sustained clock stability,
 other playback destinations and actual CoreAudio WriteMix delivery remain
 unverified. Installing the duplex bundle for an Ableton test is the next
 approval checkpoint. The original recording driver remains unchanged.
+
+
+## Duplex installation and enumeration — 2026-10-13
+
+User explicitly requested installation and completed the native administrator
+prompt. Installed the signed `RaneSixtyFourDuplex.driver` bundle and restarted
+`coreaudiod` successfully; no laptop reboot or security changes were required.
+A read-only query of the public CoreAudio device list returned:
+
+```text
+Rane Sixty-Four
+inputs=12 outputs=10 rate=48000 alive=1
+```
+
+No CoreAudio stream was started by this query. The next Live check selects
+**Rane Sixty-Four for both input and output**, enables desired stereo pairs,
+and routes a quiet track directly to Ext. Out 3/4 for Deck 1 on USB 1A.
+The separate **Rane Sixty-Four Recording** device is the fallback and should
+not be selected concurrently with the duplex device. Software monitoring on
+return recording tracks should be off for the first test to avoid a feedback
+loop. Full-duplex Live operation and other output pairs are not yet reported
+verified at this point.
