@@ -14,7 +14,7 @@ if [ "$1" = --install ]; then
     identifier=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$source_bundle/Contents/Info.plist")
     [ "$identifier" = org.openrane.sixtyfour.input.hal ]
     /usr/bin/codesign --verify --strict "$source_bundle"
-    /usr/bin/lipo -verify_arch arm64 "$source_bundle/Contents/MacOS/RaneSixtyFourInput"
+    /usr/bin/lipo "$source_bundle/Contents/MacOS/RaneSixtyFourInput" -verify_arch arm64
     /bin/mkdir -p /Library/Audio/Plug-Ins/HAL
     staging=$(/usr/bin/mktemp -d /Library/Audio/Plug-Ins/HAL/.sixty-four-stage.XXXXXX)
     /usr/bin/ditto "$source_bundle" "$staging/RaneSixtyFourInput.driver"

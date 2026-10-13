@@ -1,7 +1,9 @@
 # Sixty-Four CoreAudio input checkpoint
 
-Implementation and offline validation: 2026-10-12. **Not installed or tested
-inside the macOS audio host yet. Ableton discovery and recording remain pending.**
+Implementation and installation: 2026-10-12. **Installed with explicit user
+approval; macOS audio service restarted without rebooting the laptop. CoreAudio
+now enumerates 12 inputs at 48 kHz and reports the device alive. Ableton
+selection and actual recording through the HAL remain pending.**
 
 ## Implemented
 
@@ -104,8 +106,12 @@ the user's original restriction on installing/loading drivers. Save work and
 stop current audio first: restarting `coreaudiod` briefly interrupts Mac audio.
 
 ```sh
-sudo bash tools/sixty_four_hal.sh --install /tmp/rane-checkpoint-build/RaneSixtyFourInput.driver
+cp tools/sixty_four_hal.sh /tmp/rane-sixty-four-hal-install.sh
+sudo bash /tmp/rane-sixty-four-hal-install.sh --install /tmp/rane-checkpoint-build/RaneSixtyFourInput.driver
 ```
+
+Staging the script in `/tmp` also lets an administrator helper run it without
+requiring access to a protected Documents folder.
 
 The reviewed script refuses to replace an existing bundle, verifies its identity,
 arm64 architecture and signature, copies into
@@ -129,3 +135,23 @@ sudo bash tools/sixty_four_hal.sh --rollback
 Rollback moves only this identified bundle into a unique folder under
 `/Library/Audio/Plug-Ins/HAL-disabled` and restarts `coreaudiod`. It retains the
 bundle for inspection and does not remove other drivers.
+
+## Installed-device enumeration — 2026-10-12
+
+User explicitly approved installing the driver and restarting macOS audio.
+The administrator helper could not read the installer inside Documents; running
+an identical staged script from `/tmp` resolved that without security changes.
+Corrected `lipo` argument order before deployment. The verified signed bundle
+was installed at the exact path above and `killall coreaudiod` succeeded.
+
+A standalone read-only CoreAudio query returned:
+
+```text
+Rane Sixty-Four Recording
+inputs=12 outputs=0 rate=48000 alive=1
+```
+
+This query used the public HAL device list, stream configuration, nominal sample
+rate and DeviceIsAlive properties. It did not start I/O or change any settings.
+It verifies real host discovery and input channel count; USB capture from inside
+the audio host and Ableton recording still require the next acceptance test.
