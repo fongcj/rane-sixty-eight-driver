@@ -159,3 +159,28 @@ bundle. Both default-device eligibility properties currently return zero in
 the duplex HAL. It is intentionally not eligible for macOS default/system audio
 output, although applications can select it directly. Enabling system output
 is a separate policy/routing change; no such change has been made here.
+
+
+## macOS system-output eligibility — version 0.2.1, 2026-10-13
+
+User approved enabling Mac output selection, committing the change and updating
+the driver. The duplex device now reports default-output and system-output
+eligibility on the output scope. Input eligibility remains off. Preferred stereo
+output is USB 3/4 (Deck 1); multichannel ordering and Ableton routing are unchanged.
+All 13 tests passed, including output eligibility, input ineligibility and the
+preferred pair. The signed 0.2.1 bundle was installed and macOS audio restarted.
+Previous version preserved at:
+
+`/Library/Audio/Plug-Ins/HAL-disabled/sixty-four-before-system-output.9e0hWw/RaneSixtyFourDuplex.driver`
+
+The first native query showed both eligibility flags enabled, but macOS retained
+its persisted speaker assignment of 1/2 despite the driver's 3/4 preference.
+Applied the user-approved Deck 1 assignment through CoreAudio. A fresh read
+confirmed preferred stereo 3/4, 12 inputs, 10 outputs, 48 kHz and alive=1.
+The diagnostics property remains readable. The selected system default output
+was not changed by our code; user can select Rane Sixty-Four in Sound settings.
+Actual ordinary-app audio through the system output is not yet user-confirmed.
+
+On an existing installation, macOS's stored speaker assignment can override the
+driver's advertised preference. Check the host's preferred stereo channels after
+upgrading rather than assuming the driver property changes an existing assignment.

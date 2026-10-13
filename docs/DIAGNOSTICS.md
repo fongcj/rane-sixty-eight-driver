@@ -1,6 +1,6 @@
 # Sixty-Four playback diagnostics
 
-Duplex bundle version 0.2.0 adds read-only telemetry for investigating intermittent
+Duplex bundle version 0.2.0 and later provide read-only telemetry for investigating intermittent
 choppiness. It does not change playback scheduling, buffer limits, sample format,
 latency policy or system-output eligibility. This is instrumentation, not a fix
 for the reported symptom.
