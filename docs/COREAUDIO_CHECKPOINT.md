@@ -2,8 +2,8 @@
 
 Implementation and installation: 2026-10-12. **Installed with explicit user
 approval; macOS audio service restarted without rebooting the laptop. CoreAudio
-now enumerates 12 inputs at 48 kHz and reports the device alive. Ableton
-selection and actual recording through the HAL remain pending.**
+now enumerates 12 inputs at 48 kHz and reports the device alive. The user
+confirmed selecting the device and successfully recording audio in Ableton.**
 
 ## Implemented
 
@@ -153,5 +153,18 @@ inputs=12 outputs=0 rate=48000 alive=1
 
 This query used the public HAL device list, stream configuration, nominal sample
 rate and DeviceIsAlive properties. It did not start I/O or change any settings.
-It verifies real host discovery and input channel count; USB capture from inside
-the audio host and Ableton recording still require the next acceptance test.
+At this stage, the query verified real host discovery and input channel count;
+recording was subsequently confirmed by the user below.
+
+## Ableton recording confirmed by user — 2026-10-12
+
+After installation, the user confirmed: “I recorded into ableton, seeing it as
+an input device”. This verifies device selection and actual audio recording
+through the installed native CoreAudio input driver on the M2 MacBook Pro.
+The initial Ableton recording checkpoint is passed.
+
+The exact recorded channel pair, simultaneous recording of all pairs, recording
+duration and stop/restart behavior were not specified. This confirmation does
+not establish those additional acceptance criteria, long-duration reliability,
+playback, or MIDI support. The earlier standalone post-fader measurements remain
+separate evidence; a post-fader comparison inside Ableton has not been reported.
