@@ -2,8 +2,9 @@
 
 Status: duplex driver installed with explicit user approval; CoreAudio enumerates
 12 inputs and 10 outputs at 48 kHz. The working recording-only driver remains
-installed and unchanged as a fallback. Actual Ableton duplex playback remains
-the next application-level acceptance test.
+installed and unchanged as a fallback. The user has confirmed Ableton playback;
+brief choppiness cleared after adjusting latency settings. Reliability remains
+unresolved, and simultaneous recording within Live was not explicitly confirmed.
 
 ## Hardware evidence
 
@@ -136,3 +137,25 @@ not be selected concurrently with the duplex device. Software monitoring on
 return recording tracks should be off for the first test to avoid a feedback
 loop. Full-duplex Live operation and other output pairs are not yet reported
 verified at this point.
+
+
+## Ableton playback report — 2026-10-13
+
+User reports playback works well, with one period of choppy audio that cleared
+after changing Ableton latency settings. They cannot currently reproduce it.
+A subsequent read-only CoreAudio query reports 512 buffer frames, 48 kHz,
+12 inputs, 10 outputs and DeviceIsAlive=1. This is the observed current
+configuration, not proof of the exact setting change that resolved the symptom.
+No audio settings, installed drivers or services were changed for this check.
+
+Record the symptom as unresolved. Do not attribute it conclusively to CPU load,
+buffer starvation, clock recovery or USB scheduling without evidence. Future
+reproduction should capture chosen buffer size, start/stop timing, workload and
+transport/queue diagnostics. App playback is user-confirmed; concurrent Live
+recording and all four deck destinations are not explicitly confirmed.
+
+The recording-only bundle is optional fallback, not a dependency of the duplex
+bundle. Both default-device eligibility properties currently return zero in
+the duplex HAL. It is intentionally not eligible for macOS default/system audio
+output, although applications can select it directly. Enabling system output
+is a separate policy/routing change; no such change has been made here.
