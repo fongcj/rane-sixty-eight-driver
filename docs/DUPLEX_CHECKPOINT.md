@@ -1,6 +1,6 @@
 # Sixty-Four duplex checkpoint — 2026-10-13
 
-Status: implementation built and offline-tested, not installed. The working
+Status: implementation built, offline-tested and short duplex hardware test passed; not installed. The working
 recording-only driver remains installed and unchanged.
 
 ## Hardware evidence
@@ -85,3 +85,30 @@ sudo bash /tmp/rane-sixty-four-duplex-install.sh --rollback
 This moves only the duplex bundle to a unique HAL-disabled folder and restarts
 macOS audio. The previous recording-only bundle stays installed. Selecting
 Rane Sixty-Four Recording restores the previous Live input configuration.
+
+
+## Shared-engine hardware result — 2026-10-13
+
+On USB A, the six-second `--tone-deck1-6s` run exited successfully:
+
+```text
+Playback alternate restored: yes
+Recording alternate restored: yes
+Configuration restored: yes
+queued=240000 read=278528 input-missing=0 late-output=0 write-attempts=3223
+```
+
+All input samples inspected were finite. Deck 1 inputs 3/4 peaked at 0.0450684;
+Main/Mic inputs 11/12 peaked at approximately 0.04507. Other deck inputs were
+near the noise floor; FlexFX inputs 9/10 were zero. Peaks alone do not establish
+unity gain or sample-accurate loopback fidelity. The user confirmed the tone
+was **clean and steady** while both directions operated.
+
+The queued count includes the probe's leading/trailing silence. More write
+attempts than accepted blocks reflect bounded producer retries while the queue
+was full, not discarded successfully queued signal. No late queued frames or
+missing requested recording frames were observed. This supports the delayed
+input-count output policy for this short test; sustained clock stability,
+other playback destinations and actual CoreAudio WriteMix delivery remain
+unverified. Installing the duplex bundle for an Ableton test is the next
+approval checkpoint. The original recording driver remains unchanged.
