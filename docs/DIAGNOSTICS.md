@@ -93,3 +93,67 @@ stream had started since restart; zeros do not establish glitch-free playback.
 CoreAudio also reported 12 inputs, 10 outputs and alive=1. The query did not
 start playback/recording or change settings. Counter validation during ordinary
 Ableton playback remains the next check; no continuous monitor was left running.
+
+## 0.2.2 scheduling investigation (built, not installed)
+
+During the CoreMIDI test the user confirmed an audio cutoff. Session 5 ended at
+failure stage 4 with a maximum input callback gap of 90.45 ms. The duplex
+transport schedules output 64 USB milliseconds after the corresponding input;
+a missed output deadline is consistent with these observations, but 0.2.1's
+stage-4 counter also covers clock-query and packet-preparation failures. A
+stage-4 failure also occurred before the MIDI bridge attached. Causation by
+MIDI has not been established.
+
+The 0.2.2 candidate requests USER_INTERACTIVE QoS for the independent USB worker
+before opening transfers. It previously used an ordinary std::thread without
+an explicit scheduling request. QoS is advisory, not realtime deadline
+scheduling, and is not a verified cure for these dropouts. Timing offsets,
+buffer sizes and fail-closed behavior are unchanged.
+
+New additive schema-1 fields distinguish the failure paths:
+
+- `output_deadline_misses`: target USB frame was at or behind the current frame.
+- `max_output_deadline_late_bus_frames`: largest lateness in 1-ms USB frames;
+  equality is a miss with zero lateness.
+- `output_clock_failures`: output bus-clock query errors; actual IOReturn is
+  now retained in `last_ioreturn`.
+- `output_prepare_failures`: packet preparation rejected the batch.
+- `worker_qos_result`: return from the scheduling request (zero is success).
+
+Installing this candidate and restarting CoreAudio requires explicit approval.
+Acceptance requires a live audio-only baseline followed by audio+MIDI under
+comparable use, with no new scheduling faults and user-confirmed continuous
+sound. If it still fails, the new counters narrow the cause; do not keep raising
+latency or restarting silently. The installed driver remains 0.2.1 until approved.
+
+### Approved installation completed — 2026-10-13
+
+The user approved the 0.2.2 update and completed the macOS administrator dialog.
+Installed the arm64 ad-hoc-signed bundle and restarted `coreaudiod`. Strict
+signature verification passed. The previous 0.2.1 bundle is preserved at:
+
+`/Library/Audio/Plug-Ins/HAL-disabled/sixty-four-before-qos.2p3b0I/RaneSixtyFourDuplex.driver`
+
+The installed plist reports 0.2.2. A live CoreAudio query returned the new
+scheduling diagnostic fields, confirming the new implementation loaded.
+The initial snapshot was session 0/state 0: no audio stream had started yet.
+Its zero counters, including `worker_qos_result`, therefore do not validate the
+QoS request or dropout mitigation. Playback validation is pending. The MIDI
+bridge remains stopped for the audio-only baseline. No laptop restart or
+security setting change was performed.
+
+### Initial 0.2.2 live baseline
+
+The user switched output to internal speakers and back to Rane, then confirmed
+sound. Session 1 accepted the worker QoS request (`worker_qos_result=0`).
+A 30-second audio-only watch followed by a 30-second watch with the foreground
+MIDI bridge running stayed in state 1. Both completed with zero scheduling
+faults, transfer errors, missed output deadlines, rejected output frames,
+post-start missing output frames, and write failures. Startup missing frames
+remained constant at 5477. At the end the session had processed about 127
+seconds of input; maximum input callback gap was 13.50 ms and output callback
+gap 22.56 ms. This short check supports the mitigation but is not a long-run
+reliability guarantee or controlled proof of the original cause.
+
+The MIDI bridge remained running after the check. No new button sequence was
+requested; actual five-pair CoreMIDI delivery was validated in the previous test.

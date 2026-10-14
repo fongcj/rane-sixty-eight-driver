@@ -12,6 +12,7 @@
 #include <array>
 #include <functional>
 #include <new>
+#include <pthread/qos.h>
 
 static void number(CFMutableDictionaryRef d,CFStringRef key,int value) {
     auto n=CFNumberCreate(nullptr,kCFNumberIntType,&value); CFDictionarySetValue(d,key,n); CFRelease(n);
@@ -184,11 +185,20 @@ private:
         if(bus>UINT64_MAX-SixtyFourDuplex::outputLeadBusFrames) return false;
         uint64_t target=bus+SixtyFourDuplex::outputLeadBusFrames;
         UInt64 now;AbsoluteTime at;
-        if(!ok((*playback)->GetBusFrameNumber(playback,&now,&at),"output bus clock") || target<=now) {diag.add(D::outputScheduleFaults);diag.failure(4);return false;}
+        auto clockResult=(*playback)->GetBusFrameNumber(playback,&now,&at);
+        if(!ok(clockResult,"output bus clock")) {
+            diag.add(D::outputClockFailures);diag.add(D::outputScheduleFaults);
+            diag.failure(4,uint32_t(clockResult));return false;
+        }
+        if(target<=now) {
+            diag.add(D::outputDeadlineMisses);
+            diag.maximum(D::maxOutputDeadlineLateBusFrames,now-target);
+            diag.add(D::outputScheduleFaults);diag.failure(4);return false;
+        }
         auto& s=outSlots[bus%outSlots.size()];
         if(s.busy || sample>UINT64_MAX-SixtyFourDuplex::outputLeadSamples) {diag.add(D::outputSlotBusy);diag.failure(4);return false;}
         s.owner=this;s.frames={};s.data={};
-        if(!produce(sample+SixtyFourDuplex::outputLeadSamples,counts,s.data.data(),s.frames)) {diag.add(D::outputScheduleFaults);diag.failure(4);return false;}
+        if(!produce(sample+SixtyFourDuplex::outputLeadSamples,counts,s.data.data(),s.frames)) {diag.add(D::outputPrepareFailures);diag.add(D::outputScheduleFaults);diag.failure(4);return false;}
         s.busy=true;++outputPending;
         auto result=(*playback)->WriteIsochPipeAsync(playback,1,s.data.data(),target,8,s.frames.data(),outputCompletion,&s);
         if(!ok(result,"submit output")) {diag.add(D::outputTransferErrors);diag.failure(5,uint32_t(result));s.busy=false;--outputPending;return false;}
@@ -285,6 +295,11 @@ void SixtyFourDuplex::stop() {
     stopping.store(true);if(thread.joinable()) thread.join();
 }
 void SixtyFourDuplex::worker() {
+    // This independent USB worker does not inherit the HAL I/O thread's realtime
+    // scheduling. Request interactive QoS before any transfers. This is advisory,
+    // not a deadline guarantee; record rejection and retain fail-closed scheduling.
+    const int qosResult=pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE,0);
+    diagnostics.add(D::workerQosResult,uint64_t(qosResult));
     // On an undrained cancellation, retain the Session/DMA storage for process lifetime.
     timeline.clear();output.reset();
     auto* session=new(std::nothrow) Session(diagnostics);
