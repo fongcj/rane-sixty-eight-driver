@@ -62,6 +62,14 @@ int main() {
     }
     a={kAudioDevicePropertyPreferredChannelsForStereo,kAudioObjectPropertyScopeInput,0};
     UInt32 stereo[2];CHECK(get(nullptr,device,0,&a,0,nullptr,sizeof(stereo),&size,stereo)==noErr && stereo[0]==11 && stereo[1]==12);
+    a.mScope=kAudioObjectPropertyScopeOutput;
+    CHECK(get(nullptr,device,0,&a,0,nullptr,sizeof(stereo),&size,stereo)==noErr && stereo[0]==3 && stereo[1]==4);
+    for(auto selector:{kAudioDevicePropertyDeviceCanBeDefaultDevice,kAudioDevicePropertyDeviceCanBeDefaultSystemDevice}) {
+        a={selector,kAudioObjectPropertyScopeOutput,0};
+        CHECK(get(nullptr,device,0,&a,0,nullptr,sizeof(value),&size,&value)==noErr && value==1);
+        a.mScope=kAudioObjectPropertyScopeInput;
+        CHECK(get(nullptr,device,0,&a,0,nullptr,sizeof(value),&size,&value)==noErr && value==0);
+    }
     a={kAudioPlugInPropertyTranslateUIDToDevice,kAudioObjectPropertyScopeGlobal,0};
     CFStringRef nullUid=nullptr;
     CHECK(get(nullptr,plugin,0,&a,sizeof(nullUid),&nullUid,4,&size,&value)!=noErr);

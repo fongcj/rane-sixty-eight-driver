@@ -1,8 +1,11 @@
-> **Sixty-Four development checkpoint:** The new recording-only CoreAudio bundle
-> exposes 12 inputs at 48 kHz. It has passed offline tests and is installed locally;
-> CoreAudio sees all 12 inputs, and the user has confirmed recording audio in Ableton. See [CoreAudio checkpoint and rollback](docs/COREAUDIO_CHECKPOINT.md).
-> A clean Deck 1 playback tone is now hardware-confirmed. The [duplex driver](docs/DUPLEX_CHECKPOINT.md) passed a short simultaneous playback/recording test and is installed locally with 12 inputs/10 outputs; Ableton playback is user-confirmed, with an intermittent choppiness report still unresolved.
-> [Playback diagnostics](docs/DIAGNOSTICS.md) provide read-only counters for investigating choppiness; the updated bundle requires a separate approved installation.
+> **Sixty-Four development checkpoint:** Native CoreAudio provides 12 recording
+> inputs and 10 playback outputs at 48 kHz. Recording and playback in Ableton and
+> macOS output to Deck 1 (channels 3/4) are user-confirmed. Version 0.2.2 adds USB
+> worker QoS and [playback diagnostics](docs/DIAGNOSTICS.md); long-duration reliability remains under evaluation.
+> The foreground [CoreMIDI bridge](docs/MIDI_BRIDGE.md) supports input mapping,
+> user-confirmed in Ableton and the Rekordbox trial. LED output and automatic MIDI startup are not implemented.
+> **[Sixty-Four installation and update guide](docs/SIXTY_FOUR_INSTALLATION.md).**
+> [Serato native integration](docs/SERATO_INTEGRATION.md) remains an investigation.
 > The Sixty-Eight installer and feature claims below do not apply to the Sixty-Four.
 
 <p align="center">

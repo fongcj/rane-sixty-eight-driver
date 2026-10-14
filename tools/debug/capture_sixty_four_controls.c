@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: MIT */
-/* Explicit active experiment, NOT passive discovery.
- * Temporarily selects configuration 1, reads only HID IN, restores prior config.
- * No audio alternate selection, OUT reports, vendor commands, or seize fallback.
+/* Bounded HID input diagnostics. Activation modes temporarily select configuration
+ * 1 and restore it. Existing-session mode only observes an already configured
+ * mixer; it never opens the USB device or changes its configuration.
+ * The explicit init36 experiment sends one model-derived startup output report.
+ * Other modes are IN-only. No audio alternate selection or seize fallback.
  */
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
@@ -42,12 +44,32 @@ static void match_number(CFMutableDictionaryRef dict, CFStringRef key, int value
     CFNumberRef n = CFNumberCreate(NULL, kCFNumberIntType, &value);
     CFDictionarySetValue(dict, key, n); CFRelease(n);
 }
+/* Candidate from SixtyFour.10.9 InitHid, x86_64 0x1292/0x1298.
+ * Zero padding is deliberate; firmware semantics and reset behavior are unverified.
+ * Never add a guessed inverse command or the Sixty-Eight SysEx sequence here.
+ */
+static IOReturn send_startup_candidate(IOHIDDeviceRef device) {
+    uint8_t report[64] = {0x36, 0xff, 0xff, 0xff, 0xff, 0x01};
+    return IOHIDDeviceSetReport(device, kIOHIDReportTypeOutput, 0, report, sizeof(report));
+}
 int main(int argc, char **argv) {
-    bool managerReports = argc == 2 && !strcmp(argv[1], "--activate-manager-listen-60s");
+    bool startupExperiment = argc == 2 && !strcmp(argv[1], "--activate-init36-and-listen-60s");
+    if (argc == 2 && !strcmp(argv[1], "--describe-init36")) {
+        puts("OFFLINE ONLY: proposed experiment sends one 64-byte HID output report, ID 0:");
+        puts("36 ff ff ff ff 01 followed by 58 zero bytes; no retries or extra commands.");
+        puts("Requires idle configuration 0, selects 1, listens, then restores configuration 0.");
+        puts("Configuration restoration is NOT proof of undoing firmware state. No inverse command is known.");
+        puts("Obtain explicit approval and stop audio apps before running --activate-init36-and-listen-60s.");
+        return 0;
+    }
+    bool existingSession = argc == 2 && !strcmp(argv[1], "--listen-existing-60s");
+    bool managerReports = startupExperiment || existingSession || (argc == 2 && !strcmp(argv[1], "--activate-manager-listen-60s"));
     if (argc != 2 || (!managerReports && strcmp(argv[1], "--activate-and-listen-60s"))) {
         fprintf(stderr, "Requires explicit approval: %s --activate-and-listen-60s\n"
                         "Alternative: --activate-manager-listen-60s (manager-owned report delivery).\n"
-                        "Selects configuration 1, listens on HID IN for <=60s, restores original configuration.\n", argv[0]);
+                        "Existing audio session: --listen-existing-60s (no configuration changes).\n"
+                        "Startup experiment (separate approval): --activate-init36-and-listen-60s; preview: --describe-init36.\n"
+                        "Activation modes select configuration 1, listen on HID IN for <=60s, then restore.\n", argv[0]);
         return 2;
     }
     signal(SIGINT, stop_signal); signal(SIGTERM, stop_signal);
@@ -92,21 +114,29 @@ int main(int argc, char **argv) {
     }
     kr = (*dev)->GetConfiguration(dev, &original);
     if (kr != kIOReturnSuccess) goto cleanup;
-    if (original != 0) {
-        fprintf(stderr, "Device already configured (%u); refusing to disturb an existing session\n", original);
-        goto cleanup;
+    if (existingSession) {
+        if (original != 1) {
+            fprintf(stderr, "Existing-session mode requires configuration 1; start audio first. No activation attempted.\n");
+            goto cleanup;
+        }
+        printf("Observing existing configuration 1; no USB open, configuration change or HID output\n");
+    } else {
+        if (original != 0) {
+            fprintf(stderr, "Device already configured (%u); refusing to disturb an existing session\n", original);
+            goto cleanup;
+        }
+        kr = (*dev)->USBDeviceOpen(dev); /* No seize fallback. */
+        if (kr != kIOReturnSuccess) { fprintf(stderr, "Non-seizing device open: 0x%x\n", kr); goto cleanup; }
+        deviceOpen = true;
+        /* Recheck after acquiring access to avoid a stale configuration snapshot. */
+        UInt8 rechecked = 0;
+        kr = (*dev)->GetConfiguration(dev, &rechecked);
+        if (kr != kIOReturnSuccess || rechecked != original) goto cleanup;
+        changed = true; /* Attempt restoration even if the configuration request fails. */
+        kr = (*dev)->SetConfiguration(dev, 1);
+        if (kr != kIOReturnSuccess) { fprintf(stderr, "SetConfiguration(1): 0x%x\n", kr); goto cleanup; }
+        printf("Activated configuration 1; no audio alternate settings or HID output\n");
     }
-    kr = (*dev)->USBDeviceOpen(dev); /* No seize fallback. */
-    if (kr != kIOReturnSuccess) { fprintf(stderr, "Non-seizing device open: 0x%x\n", kr); goto cleanup; }
-    deviceOpen = true;
-    /* Recheck after acquiring access to avoid a stale configuration snapshot. */
-    UInt8 rechecked = 0;
-    kr = (*dev)->GetConfiguration(dev, &rechecked);
-    if (kr != kIOReturnSuccess || rechecked != original) goto cleanup;
-    changed = true; /* Attempt restoration even if the configuration request fails. */
-    kr = (*dev)->SetConfiguration(dev, 1);
-    if (kr != kIOReturnSuccess) { fprintf(stderr, "SetConfiguration(1): 0x%x\n", kr); goto cleanup; }
-    printf("Activated configuration 1; no audio alternate settings or HID output\n");
     /* Use the system HID service; do not compete for its raw USB interface. */
     manager = IOHIDManagerCreate(NULL, kIOHIDManagerOptionNone);
     if (!manager) goto cleanup;
@@ -136,6 +166,23 @@ int main(int argc, char **argv) {
         }
     }
     if (!hid) { fprintf(stderr, "No system HID device appeared\n"); goto cleanup; }
+    if (startupExperiment) {
+        static const uint8_t expectedReport[] = {
+            0x06,0x00,0xff,0x09,0x01,0xa1,0x01,0x19,0x01,0x29,0x02,0x15,0x00,0x25,
+            0x01,0x75,0x08,0x95,0x40,0x81,0x02,0x19,0x01,0x29,0x02,0x91,0x02,0xc0
+        };
+        CFTypeRef descriptor = IOHIDDeviceGetProperty(hid, CFSTR(kIOHIDReportDescriptorKey));
+        if (!descriptor || CFGetTypeID(descriptor) != CFDataGetTypeID() ||
+            CFDataGetLength((CFDataRef)descriptor) != sizeof(expectedReport) ||
+            memcmp(CFDataGetBytePtr((CFDataRef)descriptor), expectedReport, sizeof(expectedReport))) {
+            fprintf(stderr, "HID report descriptor mismatch; no startup output sent\n"); goto cleanup;
+        }
+        if (interrupted || capture.failed) goto cleanup;
+        puts("Sending ONE experimental Sixty-Four startup report: 36 ff ff ff ff 01 + zero padding");
+        kr = send_startup_candidate(hid);
+        printf("Startup report return: 0x%x (no retry; firmware state not verified)\n", kr);
+        if (kr != kIOReturnSuccess) goto cleanup;
+    }
     if (!managerReports) {
     kr = IOHIDDeviceOpen(hid, kIOHIDOptionsTypeNone);
     if (kr != kIOReturnSuccess) { fprintf(stderr, "Non-seizing HID open: 0x%x\n", kr); goto cleanup; }
@@ -145,13 +192,20 @@ int main(int argc, char **argv) {
     }
     printf("Report delivery: %s\n", managerReports ? "HID manager" : "explicit HID device");
     mach_timebase_info_data_t tb; mach_timebase_info(&tb);
-    printf("READY: 60-second IN-only capture; timebase=%u/%u; press controls when prompted\n", tb.numer, tb.denom);
+    printf("READY: 60-second input capture; timebase=%u/%u; press controls when prompted\n", tb.numer, tb.denom);
     CFAbsoluteTime deadline = CFAbsoluteTimeGetCurrent() + 60;
     while (!interrupted && !capture.failed && capture.reports < 1000 && CFAbsoluteTimeGetCurrent() < deadline)
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, true);
     printf("Capture finished: %u reports\n", capture.reports);
+    if (existingSession) {
+        UInt8 current = 255;
+        IOReturn query = (*dev)->GetConfiguration(dev, &current);
+        printf("Existing session final configuration: %u (query 0x%x); no restoration performed\n", current, query);
+        if (query != kIOReturnSuccess || current != 1) capture.failed = true;
+    }
     status = capture.failed ? 1 : 0;
 cleanup:
+    if (startupExperiment) puts("No inverse startup command sent. Configuration cleanup does not verify firmware reset.");
     capture.stopping = true;
     if (hid) {
         if (!managerReports) IOHIDDeviceUnscheduleFromRunLoop(hid, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);

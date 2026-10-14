@@ -12,13 +12,15 @@ public:
         outputScheduleFaults,inputTransferErrors,outputTransferErrors,decodeErrors,
         outputSlotBusy,workerStalls,cleanupFailures,startFailures,writeCalls,writeFailures,
         invalidWriteTimes,maxWriteGapNs,maxInputCallbackGapNs,maxOutputCallbackGapNs,
-        lastFailureStage,lastIOReturn,count };
+        lastFailureStage,lastIOReturn,outputDeadlineMisses,maxOutputDeadlineLateBusFrames,
+        outputClockFailures,outputPrepareFailures,workerQosResult,count };
     inline static constexpr const char* names[count]={
         "input_batches","output_batches","input_frames","output_frames","input_schedule_faults",
         "output_schedule_faults","input_transfer_errors","output_transfer_errors","decode_errors",
         "output_slot_busy","worker_stalls","cleanup_failures","start_failures","write_calls","write_failures",
         "invalid_write_times","max_write_gap_ns","max_input_callback_gap_ns","max_output_callback_gap_ns",
-        "last_failure_stage","last_ioreturn"};
+        "last_failure_stage","last_ioreturn","output_deadline_misses","max_output_deadline_late_bus_frames",
+        "output_clock_failures","output_prepare_failures","worker_qos_result"};
     // Failure stages: 1=open/start, 2=input scheduling, 3=input transfer/decode,
     // 4=output scheduling, 5=output transfer, 6=worker stall, 7=cleanup.
     void add(Metric m,uint64_t n=1) {values[m].fetch_add(n,std::memory_order_relaxed);}

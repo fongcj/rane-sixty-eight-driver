@@ -122,7 +122,8 @@ OSStatus property(AudioObjectID object,const AudioObjectPropertyAddress* a,UInt3
     case kAudioDevicePropertyDeviceIsAlive:return scalar(UInt32(active.load()?capture.healthy():present()));
     case kAudioDevicePropertyDeviceIsRunning:return scalar(UInt32(active.load() && capture.healthy()));
     case kAudioDevicePropertyDeviceCanBeDefaultDevice:
-    case kAudioDevicePropertyDeviceCanBeDefaultSystemDevice:return scalar(UInt32(0));
+    case kAudioDevicePropertyDeviceCanBeDefaultSystemDevice:
+        return scalar(UInt32(a->mScope==kAudioObjectPropertyScopeOutput));
     case kAudioDevicePropertyIsHidden:return scalar(UInt32(0));
     case kAudioDevicePropertyNominalSampleRate:return scalar(Float64(48000));
     case kAudioDevicePropertyAvailableNominalSampleRates:{AudioValueRange v{48000,48000};return scalar(v);}

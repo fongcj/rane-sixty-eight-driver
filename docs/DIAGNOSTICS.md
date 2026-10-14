@@ -1,6 +1,6 @@
 # Sixty-Four playback diagnostics
 
-Duplex bundle version 0.2.0 adds read-only telemetry for investigating intermittent
+Duplex bundle version 0.2.0 and later provide read-only telemetry for investigating intermittent
 choppiness. It does not change playback scheduling, buffer limits, sample format,
 latency policy or system-output eligibility. This is instrumentation, not a fix
 for the reported symptom.
@@ -26,13 +26,11 @@ If choppiness recurs, note the wall time and whether you had just started playba
 changed buffer size or opened another audio app. Save a short report spanning
 before/after the event. No need to force a long reliability test.
 
-The currently installed pre-diagnostics bundle has no `r64d` property. The tool
-reports that explicitly rather than displaying invented zero counters. It was
-checked against that older installed bundle successfully. New bundle installation
-and live counter validation are separate, approval-required steps. Existing
-install scripts refuse overwrites: their documented rollback preserves the old
-bundle, after which install can deploy the new signed bundle. Neither step has
-been executed as part of diagnostics development.
+Before the update, the tool correctly reported that the installed older bundle
+had no `r64d` property rather than displaying invented zero counters. Version
+0.2.0 was subsequently installed with explicit user approval (see below).
+Live counter validation during playback is still pending. Existing install
+scripts refuse overwrites; preserve the old bundle before deploying an update.
 
 ## Reading the fields
 
@@ -78,3 +76,84 @@ failure messages are unchanged. No background monitor or service is installed.
 high-water/reset, read-only property size/bounds, buffer-change reporting, and
 existing buffer/codec/HAL behavior. Playback tests pass ASan/UBSan and TSan.
 The new telemetry has not been used to diagnose an actual choppy episode yet.
+
+
+## Installed verification — 2026-10-13
+
+User explicitly approved updating the duplex driver and restarting macOS audio.
+The signed arm64 0.2.0 bundle was staged and verified, and the previous bundle
+was preserved at:
+
+`/Library/Audio/Plug-Ins/HAL-disabled/sixty-four-before-diagnostics.YgXmVI/RaneSixtyFourDuplex.driver`
+
+Installation and `coreaudiod` restart succeeded without a laptop reboot or
+security changes. A read-only native query returned valid schema-1 JSON with
+session=0, state=0, buffer_frames=512, sample_rate=48000 and zero counters. No
+stream had started since restart; zeros do not establish glitch-free playback.
+CoreAudio also reported 12 inputs, 10 outputs and alive=1. The query did not
+start playback/recording or change settings. Counter validation during ordinary
+Ableton playback remains the next check; no continuous monitor was left running.
+
+## 0.2.2 scheduling investigation (built, not installed)
+
+During the CoreMIDI test the user confirmed an audio cutoff. Session 5 ended at
+failure stage 4 with a maximum input callback gap of 90.45 ms. The duplex
+transport schedules output 64 USB milliseconds after the corresponding input;
+a missed output deadline is consistent with these observations, but 0.2.1's
+stage-4 counter also covers clock-query and packet-preparation failures. A
+stage-4 failure also occurred before the MIDI bridge attached. Causation by
+MIDI has not been established.
+
+The 0.2.2 candidate requests USER_INTERACTIVE QoS for the independent USB worker
+before opening transfers. It previously used an ordinary std::thread without
+an explicit scheduling request. QoS is advisory, not realtime deadline
+scheduling, and is not a verified cure for these dropouts. Timing offsets,
+buffer sizes and fail-closed behavior are unchanged.
+
+New additive schema-1 fields distinguish the failure paths:
+
+- `output_deadline_misses`: target USB frame was at or behind the current frame.
+- `max_output_deadline_late_bus_frames`: largest lateness in 1-ms USB frames;
+  equality is a miss with zero lateness.
+- `output_clock_failures`: output bus-clock query errors; actual IOReturn is
+  now retained in `last_ioreturn`.
+- `output_prepare_failures`: packet preparation rejected the batch.
+- `worker_qos_result`: return from the scheduling request (zero is success).
+
+Installing this candidate and restarting CoreAudio requires explicit approval.
+Acceptance requires a live audio-only baseline followed by audio+MIDI under
+comparable use, with no new scheduling faults and user-confirmed continuous
+sound. If it still fails, the new counters narrow the cause; do not keep raising
+latency or restarting silently. The installed driver remains 0.2.1 until approved.
+
+### Approved installation completed — 2026-10-13
+
+The user approved the 0.2.2 update and completed the macOS administrator dialog.
+Installed the arm64 ad-hoc-signed bundle and restarted `coreaudiod`. Strict
+signature verification passed. The previous 0.2.1 bundle is preserved at:
+
+`/Library/Audio/Plug-Ins/HAL-disabled/sixty-four-before-qos.2p3b0I/RaneSixtyFourDuplex.driver`
+
+The installed plist reports 0.2.2. A live CoreAudio query returned the new
+scheduling diagnostic fields, confirming the new implementation loaded.
+The initial snapshot was session 0/state 0: no audio stream had started yet.
+Its zero counters, including `worker_qos_result`, therefore do not validate the
+QoS request or dropout mitigation. Playback validation is pending. The MIDI
+bridge remains stopped for the audio-only baseline. No laptop restart or
+security setting change was performed.
+
+### Initial 0.2.2 live baseline
+
+The user switched output to internal speakers and back to Rane, then confirmed
+sound. Session 1 accepted the worker QoS request (`worker_qos_result=0`).
+A 30-second audio-only watch followed by a 30-second watch with the foreground
+MIDI bridge running stayed in state 1. Both completed with zero scheduling
+faults, transfer errors, missed output deadlines, rejected output frames,
+post-start missing output frames, and write failures. Startup missing frames
+remained constant at 5477. At the end the session had processed about 127
+seconds of input; maximum input callback gap was 13.50 ms and output callback
+gap 22.56 ms. This short check supports the mitigation but is not a long-run
+reliability guarantee or controlled proof of the original cause.
+
+The MIDI bridge remained running after the check. No new button sequence was
+requested; actual five-pair CoreMIDI delivery was validated in the previous test.
